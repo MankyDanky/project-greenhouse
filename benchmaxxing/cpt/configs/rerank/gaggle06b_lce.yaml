@@ -2,7 +2,8 @@
 # Engine: nanochat.  Run from reranker/:
 #   baseline, the released 0.6B base model (bash benchmaxxing/cpt/fetch_models.sh 0.6b links it into models/):
 #     bash launch/train.sh ../benchmaxxing/cpt/configs/rerank/gaggle06b_lce.yaml 2 --override model_name=models/<repo name>
-#   a CPT checkpoint (python benchmaxxing/cpt/export_for_reranker.py <train config> prints this line):
+#   a CPT checkpoint (python benchmaxxing/cpt/export_for_reranker.py configs/train.yaml --set model=gaggle06b ...
+#   prints this line):
 #     bash launch/train.sh ../benchmaxxing/cpt/configs/rerank/gaggle06b_lce.yaml 2 \
 #       --override model_name=models/cpt-<run> output_dir=checkpoints/cpt_<run> wandb_run_name=cpt_<run>
 #

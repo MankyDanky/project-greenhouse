@@ -2,10 +2,10 @@
 (model_<step>.pt + meta_<step>.json + tokenizer.json + tokenizer_config.json; no optimizer state), and print the
 fine-tuning and evaluation commands.
 
-    python export_for_reranker.py configs/train/gaggle3b_ir_r25.yaml            # the run's last checkpoint
-    python export_for_reranker.py configs/train/gaggle3b_ir_r25.yaml --step 1500
+    python export_for_reranker.py configs/train.yaml                       # the run's last checkpoint
+    python export_for_reranker.py configs/train.yaml --set model=gaggle06b --step 1500   # (the run's overrides)
 
-The reranker recipe is the train config's `rerank_config`: the paper's run 1 for the 3B model,
+The reranker recipe is the starting model's `rerank_config` (configs/train.yaml): the paper's run 1 for the 3B model,
 configs/rerank/gaggle06b_lce.yaml for the 0.6B model. `ve_every: 2` is dropped from the meta: it is upstream's
 default, so the 3B export loads with the reranker's pinned nanochat snapshot exactly as the paper's backbone does. A
 model with another `ve_every` needs this folder's patched nanochat (third_party/nanochat); the printed commands then
@@ -16,8 +16,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-from cfgload import load_config  # noqa: E402
-from train import rel  # noqa: E402
+from train import rel, resolve  # noqa: E402
 
 REPO = HERE.parent.parent
 RERANKER = REPO / "reranker"
@@ -28,8 +27,9 @@ def main():
     ap.add_argument("config")
     ap.add_argument("--step", type=int, help="saved step to export (default: the last)")
     ap.add_argument("--dest", default=str(RERANKER / "models"), help="parent folder (default: reranker/models)")
+    ap.add_argument("--set", nargs="*", default=[], metavar="KEY=VALUE", help="the overrides the run was trained with")
     a = ap.parse_args()
-    cfg = load_config(a.config)
+    cfg = resolve(a.config, a.set)
     run = cfg["run"]
     src = rel(cfg.get("base_dir", "work/nanochat_base")) / "base_checkpoints" / run
     steps = sorted(int(p.stem.split("_")[1]) for p in src.glob("model_*.pt"))

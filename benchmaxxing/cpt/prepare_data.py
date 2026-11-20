@@ -1,19 +1,22 @@
 """Build a continued-pretraining (CPT) data mix: raw corpus documents plus replayed pre-training text, written as
-nanochat base-data shards. Everything is set by one YAML file (see configs/data/).
+nanochat base-data shards. Everything is set by one YAML file, configs/data.yaml; any key can be overridden on the
+command line (--set KEY=VALUE, dotted keys, YAML values).
 
-    python prepare_data.py configs/data/ir_r25.yaml            # all stages
-    python prepare_data.py configs/data/ir_r25.yaml --stage corpus     # only (re)build the per-source caches
-    python prepare_data.py configs/data/ir_r25.yaml --limit 2000       # smoke test: at most 2,000 docs per source
+    python prepare_data.py configs/data.yaml                                   # the mix, data/ir_mix
+    python prepare_data.py configs/data.yaml --set replay.fraction=0.1 name=ir_mix_r10  # any key can be overridden
+    python prepare_data.py configs/data.yaml --stage corpus                    # only (re)build the per-source caches
+    python prepare_data.py configs/data.yaml --limit 2000                      # smoke test: at most 2,000 docs per source
+
+The mix is written to data/<name> unless `out_dir` is set; manifest.json records the configuration with overrides.
 
 Stages
   corpus  For each enabled source: read the documents, apply `sample` if set (a fixed fraction by document id),
           format them as `title\\n\\ntext` (or the text alone), split documents longer than `format.max_chars` at a
           paragraph / sentence / word boundary, drop exact duplicates, set aside a held-out sample (by hash), count
-          tokens. Cached per source in `work_dir/corpus/`, in a fixed pseudo-random order, so every arm reuses it.
+          tokens. Cached per source in `work_dir/corpus/`, in a fixed pseudo-random order, so any later mix reuses it.
           Memory stays bounded for any corpus size.
   replay  Read pre-training documents (ClimbMix shards from the Hugging Face hub) in a fixed, seeded order until the
-          replay token target is met. Arms with smaller replay fractions use a prefix of the same stream, so the
-          replay documents of a 5% arm are a subset of a 25% arm's.
+          replay token target is met. A mix with a smaller replay target uses a prefix of the same stream.
   mix     Interleave the corpus sources in proportion to their tokens (a source with several passes runs them one
           after another, each over an equal part of the run), then corpus and replay so that the cumulative replay share follows `replay.schedule`, and write
           `out_dir/train/shard_*.parquet` (column `text`), the evaluation sets, and `out_dir/manifest.json`.
@@ -157,7 +160,7 @@ def build_corpus_source(spec, cfg, counter, work, limit):
     its statistics as <name>.json. Memory stays bounded whatever the corpus size (MS MARCO v2 has 138M passages):
     pieces are spread over N_BUCKETS files by content hash, so exact duplicates share a bucket, and each bucket is
     deduplicated (the first occurrence is kept), ordered by hash and token-counted on its own. The cache is therefore
-    in a fixed pseudo-random order that depends only on the text, the same for every arm and seed."""
+    in a fixed pseudo-random order that depends only on the text, the same for every mix and seed."""
     name = spec["name"]
     d = work / "corpus"
     out, meta_path, held_path = d / f"{name}.arrow", d / f"{name}.json", d / f"{name}.heldout.npy"
@@ -254,8 +257,8 @@ def open_arrow(path):
 
 def replay_stream(cfg, counter, work, target_tokens, limit):
     """Pre-training documents in a fixed, seeded shard order until `target_tokens`, as an Arrow table (text, n_tokens).
-    The stream is cached in work_dir/replay/ and memory-mapped; an arm with a smaller target reads a prefix of the
-    same stream, so the replay documents of a 5% arm are a subset of a 25% arm's."""
+    The stream is cached in work_dir/replay/ and memory-mapped; a mix with a smaller target reads a prefix of the
+    same stream."""
     r = cfg["replay"]; src = r["source"]
     schema = pa.schema([("text", pa.string()), ("n_tokens", pa.int32())])
     if target_tokens <= 0:
@@ -410,10 +413,11 @@ def plan_passes(cfg, available):
     group g has a `ratio`: its share of the corpus tokens, relative to the other groups. A group's capacity is the
     sum of passes x tokens over its sources; the group that runs out first sets the corpus size, every other group
     gets its ratio of it, and the sources of a group are scaled together (so they keep their relative weights).
-    `ratio: all` takes a group's full capacity outside that calculation. Returns ({source: passes}, {group: info})."""
+    `ratio: all` takes a group's full capacity outside that calculation. With `exclude_ood`, `groups_exclude_ood`
+    (if given) replaces `groups`. Returns ({source: passes}, {group: info})."""
     specs = {sp["name"]: sp for sp in cfg["corpus"]}
     full = {n: float(specs[n].get("passes", 1)) for n in available}
-    groups = cfg.get("groups")
+    groups = cfg.get("groups_exclude_ood") if cfg.get("exclude_ood") and cfg.get("groups_exclude_ood") else cfg.get("groups")
     if not groups:
         return full, {}
     members = {}
@@ -475,7 +479,7 @@ def enabled_sources(cfg):
 
 def mix(cfg, work, limit):
     counter = Counter(HERE / cfg["tokenizer"])
-    out = HERE / cfg["out_dir"]
+    out = HERE / (cfg.get("out_dir") or f"data/{cfg['name']}")
     rng = np.random.default_rng(cfg["seed"])
     sources = enabled_sources(cfg)
     excluded = set(cfg.get("exclude_sources") or [])
@@ -517,7 +521,10 @@ def mix(cfg, work, limit):
     corpus_tokens = int(sum(totals))
     r = cfg["replay"]; f = float(r["fraction"])
     if r.get("tokens"):                 # an absolute replay budget, e.g. the replay-only control (no corpus at all)
-        replay_target = int(r["tokens"])
+        tok = r["tokens"]
+        if isinstance(tok, str) and tok.startswith("from:"):     # as many tokens as another built mix
+            tok = json.loads((HERE / tok[5:] / "manifest.json").read_text())["totals"]["train_tokens"]
+        replay_target = int(tok)
         f = replay_target / (corpus_tokens + replay_target)
     else:
         assert f < 1, "replay.fraction must be < 1; for a replay-only run set replay.tokens and disable the corpus"
@@ -593,10 +600,11 @@ def mix(cfg, work, limit):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("config")
+    ap.add_argument("--set", nargs="*", default=[], metavar="KEY=VALUE", help="override config keys (dotted, YAML values)")
     ap.add_argument("--stage", default="all", choices=["all", "corpus", "mix"])
     ap.add_argument("--limit", type=int, default=0, help="smoke test: at most this many documents per source")
     a = ap.parse_args()
-    cfg = load_config(a.config)
+    cfg = load_config(a.config, a.set)
     work = HERE / cfg["work_dir"]
     if a.limit:
         work = work / f"limit{a.limit}"

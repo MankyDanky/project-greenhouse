@@ -1,15 +1,15 @@
-"""Language-model evaluation of a CPT run, or of the checkpoint it started from, on the mix's evaluation sets.
+"""Language-model evaluation of a CPT run, or of the checkpoint it started from, on the mix's evaluation sets. Give
+the train config with the same overrides the run was trained with.
 
-    python evaluate.py configs/train/gaggle3b_ir_r25.yaml --init          # the starting checkpoint (baseline row)
-    python evaluate.py configs/train/gaggle3b_ir_r25.yaml                 # the run's last checkpoint
-    python evaluate.py configs/train/gaggle3b_ir_r25.yaml --step 1000 --core
+    python evaluate.py configs/train.yaml --init                    # the starting checkpoint (the baseline row)
+    python evaluate.py configs/train.yaml                           # the run's last checkpoint
+    python evaluate.py configs/train.yaml --set model=gaggle06b --step 1000 --core
 
 Bits per byte (nanochat's tokenizer-independent loss) on the three sets prepare_data.py writes:
   heldout_corpus   corpus pieces never trained on              lower after CPT = gain on the domain
   seen_corpus      as many trained-on pieces, per source       its drop beyond heldout_corpus's = memorisation
   heldout_replay   pre-training validation documents           should stay flat; a rise = forgetting
-The sets come from `eval_data` in the train config (default: the run's own data), so every arm of a sweep can be
-scored on the same documents. Each document is scored exactly once (BOS + text, in windows of the model's context,
+The sets come from `eval_data` in the train config (default: the run's own data). Each document is scored exactly once (BOS + text, in windows of the model's context,
 never packed with other documents), so the numbers do not depend on batch size or GPU count.
 --core also runs nanochat's CORE benchmark (scripts/base_eval.py --eval core), the general-capability check.
 Writes results/<run>/<init|step_N>.json.
@@ -19,8 +19,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-from cfgload import load_config  # noqa: E402
-from train import prepare_base_dir, rel, visible_gpus  # noqa: E402
+from train import prepare_base_dir, rel, resolve, visible_gpus  # noqa: E402
 
 SETS = ("heldout_corpus", "seen_corpus", "heldout_replay")
 
@@ -74,8 +73,9 @@ def main():
     ap.add_argument("--core", action="store_true", help="also run CORE (downloads nanochat's eval bundle once)")
     ap.add_argument("--batch-rows", type=int, default=8, help="sequences per forward pass")
     ap.add_argument("--ngpu", type=int, default=0, help="GPUs for CORE (bpb runs on one device)")
+    ap.add_argument("--set", nargs="*", default=[], metavar="KEY=VALUE", help="the overrides the run was trained with")
     a = ap.parse_args()
-    cfg = load_config(a.config)
+    cfg = resolve(a.config, a.set)
     nc, base = prepare_base_dir(cfg)
     tag, step, label = resolve_checkpoint(cfg, a, base)
     os.environ["NANOCHAT_BASE_DIR"] = str(base)

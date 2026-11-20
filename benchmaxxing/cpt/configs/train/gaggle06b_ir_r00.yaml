@@ -1,4 +1,0 @@
-# Replay sweep: gaggle06b_ir_r25 with no replay (the corpus alone).
-extends: gaggle06b_ir_r25.yaml
-run: gaggle06b_ir_r00
-data: data/ir_r00

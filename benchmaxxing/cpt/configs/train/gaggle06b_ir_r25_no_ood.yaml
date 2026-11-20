@@ -1,6 +1,0 @@
-# Option: gaggle06b_ir_r25 on the mix without the out-of-domain collections (configs/data/ir_r25_no_ood.yaml).
-# Scored on its own held-out sets; to compare with the full arm on the same documents, set eval_data: data/ir_r25.
-extends: gaggle06b_ir_r25.yaml
-run: gaggle06b_ir_r25_no_ood
-data: data/ir_r25_no_ood
-eval_data: data/ir_r25_no_ood

@@ -1,5 +1,0 @@
-# Leave-one-out: gaggle06b_ir_r25 without SciFact's corpus. The SciFact gain of the full arm over this one is the
-# part of the gain that comes from seeing that collection's own documents.
-extends: gaggle06b_ir_r25.yaml
-run: gaggle06b_ir_r25_minus_scifact
-data: data/ir_r25_minus_scifact

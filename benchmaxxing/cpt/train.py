@@ -1,7 +1,9 @@
-"""Continued pretraining (CPT) from a released Gaggle checkpoint, configured by one YAML file (see configs/train/).
+"""Continued pretraining (CPT) from a released Gaggle checkpoint, configured by one YAML file, configs/train.yaml;
+any key can be overridden on the command line (--set KEY=VALUE).
 
-    python train.py configs/train/gaggle3b_ir_r25.yaml --check        # print the derived settings, validate, exit
-    python train.py configs/train/gaggle3b_ir_r25.yaml --ngpu 8       # run (torchrun on this node; 1 GPU: plain python)
+    python train.py configs/train.yaml --check                    # derived settings, validation; exit
+    python train.py configs/train.yaml --ngpu 8                   # train the 3B model on the default mix
+    python train.py configs/train.yaml --ngpu 8 --set model=gaggle06b   # the 0.6B model (once released)
 
 It drives nanochat's own trainer, `scripts/base_train.py` at karpathy/nanochat@92d63d4 plus `nanochat_cpt.patch`
 (setup.sh builds it in third_party/nanochat), with three CPT options the patch adds:
@@ -12,6 +14,8 @@ It drives nanochat's own trainer, `scripts/base_train.py` at karpathy/nanochat@9
   NANOCHAT_DATA_DIR                    the shard directory written by prepare_data.py
 
 What this file derives from the YAML and the checkpoint's meta:
+  * the starting model's settings from `models[model]` (keys set at the top level win);
+  * the run name, <model>_<mix name>, unless `run` is set;
   * architecture flags (depth, width via aspect ratio, heads, value-embedding spacing, window pattern, context);
   * learning rates: the original run's effective peak LRs (its configured LRs times the batch-size factor it ran
     with) times `lr.scale`;
@@ -21,6 +25,8 @@ What this file derives from the YAML and the checkpoint's meta:
 Every key under `extra_args` must be a real flag of the trainer and is passed through unchanged.
 """
 import argparse, json, math, os, re, shlex, subprocess, sys
+
+import yaml
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -47,12 +53,37 @@ def original_lr_factor(meta):
     return math.sqrt(int(uc["total_batch_size"]) / B_REF)
 
 
+# --set keys that do not change what is trained, so they may be overridden without naming a new run
+RUN_NEUTRAL = {"model", "data", "run", "eval_data", "nanochat", "base_dir", "wandb", "eval_every", "eval_tokens",
+               "core_metric_every", "save_every", "keep_checkpoints"}
+
+
+def resolve(path, overrides=()):
+    """The config with overrides applied, the starting model's settings filled in and the run named."""
+    cfg = load_config(path, overrides)
+    m = (cfg.get("models") or {}).get(cfg.get("model"))
+    if cfg.get("models") is not None and m is None:
+        sys.exit(f"model {cfg.get('model')!r} is not one of {sorted(cfg['models'])}")
+    if m:
+        init = cfg.setdefault("init", {})
+        init.setdefault("dir", m.get("dir")); init.setdefault("step", m.get("step"))
+        for k in ("weight_decay", "device_batch_size", "rerank_config"):
+            cfg.setdefault(k, m.get(k))
+    if not cfg.get("run"):
+        changed = {o.partition("=")[0].split(".")[0] for o in overrides} - RUN_NEUTRAL
+        if changed:
+            sys.exit(f"--set {', '.join(sorted(changed))} changes the recipe: also set run=<a new name>")
+        cfg["run"] = f"{cfg.get('model', 'cpt')}_{Path(cfg['data']).name}"
+    return cfg
+
+
 def require(cfg):
     """Placeholders left empty (a model not released yet) stop the run with a clear message."""
     missing = [k for k, v in (("init.dir", cfg["init"].get("dir")), ("init.step", cfg["init"].get("step")),
                               ("weight_decay", cfg.get("weight_decay"))) if v in (None, "")]
     if missing:
-        sys.exit(f"{cfg['run']}: fill in {', '.join(missing)} in the config (the starting model may not be released yet)")
+        sys.exit(f"{cfg['run']}: {', '.join(missing)} not set: fill in models.{cfg.get('model')} in the config "
+                 f"(the starting model may not be released yet)")
     init = rel(cfg["init"]["dir"])
     if not (init / f"meta_{int(cfg['init']['step']):06d}.json").exists():
         sys.exit(f"{init}/meta_{int(cfg['init']['step']):06d}.json not found: run fetch_models.sh")
@@ -164,11 +195,13 @@ def main():
     ap.add_argument("config")
     ap.add_argument("--ngpu", type=int, default=0, help="GPUs on this node (0 = all visible)")
     ap.add_argument("--check", action="store_true", help="print the derived settings and validate; do not train")
+    ap.add_argument("--set", nargs="*", default=[], metavar="KEY=VALUE", help="override config keys (dotted, YAML values)")
     a = ap.parse_args()
-    cfg = load_config(a.config)
+    cfg = resolve(a.config, a.set)
     flags, info = derive(cfg)
     ngpu = a.ngpu or visible_gpus() or 1
     errors = check(cfg, flags, ngpu, info)
+    print(f"run: {cfg['run']}")
     print(json.dumps(info, indent=2))
     print("base_train flags:", " ".join(shlex.quote(x) for x in to_argv(flags)))
     if errors:
@@ -176,6 +209,18 @@ def main():
     if a.check:
         print(f"OK for {ngpu} GPU(s)"); return
     nc, base = prepare_base_dir(cfg)
+    # record the resolved configuration with the run; a rerun (resume) must train exactly the same thing
+    saved = base / "base_checkpoints" / cfg["run"] / "cpt_config.yaml"
+    record = {**cfg, "_base_train_flags": flags}
+    if saved.exists():
+        before = (yaml.safe_load(saved.read_text()) or {}).get("_base_train_flags")
+        if before != flags:
+            diff = sorted(k for k in set(before or {}) | set(flags) if (before or {}).get(k) != flags.get(k))
+            sys.exit(f"{saved} records different settings ({', '.join(diff)}): this would resume run {cfg['run']} "
+                     f"with another recipe. Set a new run=, or delete that run's directory.")
+    else:
+        saved.parent.mkdir(parents=True, exist_ok=True)
+        saved.write_text(yaml.safe_dump(record, sort_keys=False))
     env = dict(os.environ, NANOCHAT_BASE_DIR=str(base), NANOCHAT_DATA_DIR=str(rel(cfg["data"]) / "train"),
                OMP_NUM_THREADS=os.environ.get("OMP_NUM_THREADS", "1"))
     launcher = ["torchrun", "--standalone", f"--nproc_per_node={ngpu}"] if ngpu > 1 else [sys.executable]

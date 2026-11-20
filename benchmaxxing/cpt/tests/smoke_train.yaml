@@ -1,14 +1,20 @@
 # CPU smoke test of train.py / evaluate.py / export_for_reranker.py on a tiny model that tests/smoke_train.sh
 # pre-trains for 3 steps first. Not a recipe.
-extends: ../configs/train/gaggle3b_ir_r25.yaml
+extends: ../configs/train.yaml
+model: smoke
+models:
+  smoke:
+    dir: work/smoke_base/base_checkpoints/smoke_init
+    step: 3
+    weight_decay: 0.021764
+    device_batch_size: 2
+    rerank_config: benchmaxxing/cpt/configs/rerank/gaggle06b_lce.yaml
 run: smoke_cpt
-init: {dir: work/smoke_base/base_checkpoints/smoke_init, step: 3}
 data: data/smoke
 eval_data: data/smoke
 base_dir: work/smoke_base
 tokens: 10240
 batch_tokens: 1024
-device_batch_size: 2
 fp8: false
 eval_every: 5
 eval_tokens: 1024

@@ -1,0 +1,52 @@
+# The continued-pretraining run: start from a released Gaggle base model and train on the mix built by
+# prepare_data.py configs/data.yaml. Run from benchmaxxing/cpt/ (paths below are relative to it):
+#   python train.py configs/train.yaml --check            # print the derived settings and validate; no training
+#   python train.py configs/train.yaml --ngpu 8           # train
+# Any key can be overridden on the command line: --set KEY=VALUE (dotted keys, YAML values). The run is named
+# <model>_<mix name> unless `run` is set; overriding anything that changes the recipe also requires `run`, so two
+# variants never share a checkpoint directory. Each run saves its resolved configuration as
+# <base_dir>/base_checkpoints/<run>/cpt_config.yaml, and a rerun (resume) with a different one is refused.
+# evaluate.py and export_for_reranker.py take the same config and overrides.
+
+model: gaggle3b                         # the starting model, one of `models` (gaggle06b once it is released)
+models:
+  gaggle3b:                             # castorini/gaggle-nanochat-pretrained-climbmix-20260924
+    dir: models/gaggle-nanochat-pretrained-climbmix-20260924
+    step: 227158
+    weight_decay: 0.021764              # the original run's Muon weight-decay amplitude, used as is (it follows
+                                        # nanochat's cosine to 0 over this run)
+    device_batch_size: 8                # 2,048-token sequences per GPU per micro-step (as in pre-training)
+    rerank_config: reranker/configs/sft/run1_seed17.yaml          # the paper's run-1 recipe
+  gaggle06b:                            # NOT RELEASED YET: fill in the three placeholders (and REPO_06B / STEP_06B
+                                        # in fetch_models.sh); train.py refuses to run until then
+    dir:                                # PLACEHOLDER: models/<the 0.6B Hugging Face repo name>
+    step:                               # PLACEHOLDER: the released step
+    weight_decay:                       # PLACEHOLDER: the original run's Muon weight-decay amplitude
+    device_batch_size: 32
+    rerank_config: benchmaxxing/cpt/configs/rerank/gaggle06b_lce.yaml
+# The architecture and the original run's learning rates are read from the checkpoint's meta_<step>.json.
+
+data: data/ir_mix                       # the mix to train on
+eval_data: data/ir_mix                  # evaluate.py's held-out / seen / replay sets
+nanochat: third_party/nanochat          # the patched trainer (setup.sh)
+base_dir: work/nanochat_base            # NANOCHAT_BASE_DIR: checkpoints in base_checkpoints/<run>/
+
+tokens:                                 # empty: 95% of the mix's training tokens, i.e. one pass that never wraps
+batch_tokens: 1048576                   # 2^20 tokens per optimizer step: ~4,000 steps on the default mix
+fp8: true                               # FP8 matmuls as in pre-training (H100 or newer; set false on older GPUs)
+
+lr:
+  scale: 0.1                            # peak LR = 0.1 x the original run's peak, for all four parameter groups.
+                                        # The 3B checkpoint ended at ~0.07 x peak, so this is a mild re-warm.
+  warmup_frac: 0.01                     # linear warmup over the first 1% of steps
+  decay_frac: 0.5                       # constant, then linear decay over the last half (pre-training: 0.55)
+  final_frac: 0.0                       # decay to zero
+# weight_decay: 0                       # instead of the model's original Muon decay: a pure continuation (with run=)
+
+eval_every: 250                         # val bpb on the held-out mix (corpus + replay at the run's share)
+eval_tokens: 2097152
+core_metric_every: -1                   # CORE once, at the end, with evaluate.py
+save_every: 500
+keep_checkpoints: 2
+wandb: false                            # true: log to Weights & Biases
+extra_args: {}                          # any other scripts/base_train.py flag, passed through unchanged

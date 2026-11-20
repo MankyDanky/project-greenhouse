@@ -15,7 +15,7 @@ get() {  # repo, step
   local link=../../reranker/models/${1#castorini/}
   if [ ! -e "$link" ]; then mkdir -p ../../reranker/models && ln -s "../../benchmaxxing/cpt/$dir" "$link"; fi
 }
-# The 0.6B model is not released yet: when it is, set its repo and step here (and in configs/train/gaggle06b_ir_r25.yaml)
+# The 0.6B model is not released yet: when it is, set its repo and step here (and models.gaggle06b in configs/train.yaml)
 REPO_06B=""
 STEP_06B=""
 get_06b() { [ -n "$REPO_06B" ] || { echo "the 0.6B Gaggle model is not released yet (REPO_06B is empty)"; return 1; }

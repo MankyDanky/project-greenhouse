@@ -1,4 +1,0 @@
-# Replay sweep: gaggle06b_ir_r25 with 50% replay (same corpus tokens; the replay is added on top).
-extends: gaggle06b_ir_r25.yaml
-run: gaggle06b_ir_r50
-data: data/ir_r50

@@ -1,7 +1,0 @@
-# Replay sweep arm: identical to ir_r25 except the replay share. The corpus documents and their order are the same
-# in every arm; replay documents are a prefix of one fixed stream, so smaller arms' replay is a subset of larger ones'.
-extends: ir_r25.yaml
-name: ir_r05
-out_dir: data/ir_r05
-replay:
-  fraction: 0.05
