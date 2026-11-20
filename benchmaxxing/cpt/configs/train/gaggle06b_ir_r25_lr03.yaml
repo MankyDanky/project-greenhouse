@@ -1,0 +1,4 @@
+# LR probe: gaggle06b_ir_r25 with peak LR 0.3 x the original (default 0.1).
+extends: gaggle06b_ir_r25.yaml
+run: gaggle06b_ir_r25_lr03
+lr: {scale: 0.3}

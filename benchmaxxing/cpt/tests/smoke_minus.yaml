@@ -1,0 +1,6 @@
+# Smoke test of exclude_sources: tests/smoke_data.yaml without scifact. nfcorpus must contribute exactly the same
+# tokens as in the smoke mix.   python prepare_data.py tests/smoke_minus.yaml --limit 3000
+extends: smoke_data.yaml
+name: smoke_minus
+out_dir: data/smoke_minus
+exclude_sources: [scifact]

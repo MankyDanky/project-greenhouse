@@ -1,0 +1,7 @@
+# Leave-one-collection-out: ir_r25 without SciFact's corpus. The mix is sized with SciFact counted, so every other
+# source contributes exactly what it does in ir_r25. The SciFact gain of the full arm over this one is what seeing
+# SciFact's own documents adds; what remains is transfer from the rest of the mix.
+extends: ir_r25.yaml
+name: ir_r25_minus_scifact
+out_dir: data/ir_r25_minus_scifact
+exclude_sources: [scifact]

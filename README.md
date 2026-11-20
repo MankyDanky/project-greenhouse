@@ -66,6 +66,7 @@ print(model.compute_score([("what is a greenhouse gas", "Carbon dioxide traps he
 | [`eval/`](eval/) | Sec. 3, 5, 6 | BM25 candidates, the reranking evaluator, BM25 / oracle rows, the fine-tuned and listwise baselines |
 | [`diagnostics/`](diagnostics/) | Sec. 6.1, 6.3 | attention-blocking test of the MNTP rerankers, backbone weight scale |
 | [`paper/`](paper/) | all | `manifest.yaml` (every reproduced row, its config and its printed scores) and `check_results.py` |
+| [`benchmaxxing/`](benchmaxxing/) | – | after the paper: adapting Gaggle models to the evaluation collections, e.g. continued pretraining on their corpora ([plan](benchmaxxing/cpt/PLAN.md)) |
 | [`.claude/skills/`](.claude/skills/) | – | task guides for coding agents (reproduce a row, evaluate, prepare data, pre-train, build the soup) |
 
 ## Getting started

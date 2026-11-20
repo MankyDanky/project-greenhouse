@@ -1,0 +1,101 @@
+# Continued-pretraining mix, iteration 1: the raw document text of the evaluation collections' corpora, balanced
+# across BEIR, MS MARCO v1 and MS MARCO v2, plus 25% replay of the pre-training data (ClimbMix). Paths are relative to benchmaxxing/cpt/.
+# Build: python prepare_data.py configs/data/ir_r25.yaml
+name: ir_r25
+seed: 17
+work_dir: work/ir                 # per-source caches, shared by every replay arm built from the same sources
+out_dir: data/ir_r25              # train/ shards, held-out sets, manifest.json
+tokenizer: models/gaggle-nanochat-pretrained-climbmix-20260924/tokenizer.json   # both Gaggle models share it
+
+format:
+  title_separator: "\n\n"         # documents become `title\n\ntext` (or the text alone)
+  max_chars: 3500                 # longer documents are split (about 800 tokens a piece)
+
+heldout:                          # corpus pieces set aside by hash, never trained on: the "gain" measurement
+  fraction: 0.002
+  max_docs_per_source: 2000
+
+# The corpora of the 12 test sets, in three groups. Token counts are approximate (32,768-token Gaggle tokenizer).
+# `passes` is the most passes a source may get, and its weight within its group; `groups` below decides how much of
+# each group goes into the mix.
+corpus:
+  - name: msmarco-v1              # DL19, DL20: ~715M tokens
+    group: msmarco-v1
+    source: {type: hf_jsonl, repo: Tevatron/msmarco-passage-corpus, file: corpus.jsonl.gz, id: docid, text: text}
+                                  # no title: the DL candidates the reranker is evaluated on are the passages alone
+    passes: 2
+  - name: msmarco-v2              # DL21-23: 138M passages, ~8.2B tokens before deduplication
+    group: msmarco-v2
+    source: {type: ir_datasets, id: msmarco-passage-v2}
+    passes: 1
+  # BEIR: all seven test collections. The five open corpora are small (~60M tokens together), so up to 4 passes.
+  # `ood: true` marks the four the paper counts as out of domain for its fine-tuning data (RLHN-250K): TREC-COVID,
+  # NFCorpus, Robust04 and TREC-News (Sec. 5.1). `exclude_ood: true` below keeps them out of the mix.
+  - name: trec-covid
+    group: beir
+    ood: true
+    source: {type: hf_parquet, repo: BeIR/trec-covid, file: corpus/corpus-00000-of-00001.parquet, id: _id, title: title, text: text}
+    passes: 4
+  - name: nfcorpus
+    group: beir
+    ood: true
+    source: {type: hf_parquet, repo: BeIR/nfcorpus, file: corpus/corpus-00000-of-00001.parquet, id: _id, title: title, text: text}
+    passes: 4
+  - name: fiqa
+    group: beir
+    source: {type: hf_parquet, repo: BeIR/fiqa, file: corpus/corpus-00000-of-00001.parquet, id: _id, title: title, text: text}
+    passes: 4
+  - name: scidocs
+    group: beir
+    source: {type: hf_parquet, repo: BeIR/scidocs, file: corpus/corpus-00000-of-00001.parquet, id: _id, title: title, text: text}
+    passes: 4
+  - name: scifact
+    group: beir
+    source: {type: hf_parquet, repo: BeIR/scifact, file: corpus/corpus-00000-of-00001.parquet, id: _id, title: title, text: text}
+    passes: 4
+  # Robust04 and TREC-News (~851M tokens together) are licensed by NIST: their text may not be redistributed, and a
+  # model trained on them may fall under the same terms, so check before releasing one. Read from Pyserini's
+  # prebuilt BEIR indexes (needs pyserini and Java 21), the same indexes eval/candidates/ uses.
+  - name: robust04
+    group: beir
+    ood: true
+    source: {type: pyserini_index, index: beir-v1.0.0-robust04.flat, id: _id, title: title, text: text}
+    passes: 1
+  - name: trec-news
+    group: beir
+    ood: true
+    source: {type: pyserini_index, index: beir-v1.0.0-trec-news.flat, id: _id, title: title, text: text}
+    passes: 1
+
+# How much of each group goes into the mix. Each group takes `ratio` of the corpus tokens (relative to the others).
+# A group's capacity is its sources' passes x tokens; the group that runs out first sets the corpus size, every other
+# group gets its ratio of that, and a group's sources are scaled together. Below one pass a source contributes a
+# fixed random subset of its documents (a smaller amount is always a subset of a larger one).
+# With these settings BEIR runs out first (~1.09B: the open corpora x4, Robust04 and TREC-News x1), so each group
+# contributes ~1.09B: MS MARCO v1 ~1.5 passes, MS MARCO v2 ~13% of its passages. Corpus ~3.3B tokens.
+# `ratio: all` takes a whole group at its passes; configs/data/ir_all_r25.yaml does that for every group.
+groups:
+  beir:       {ratio: 1}
+  msmarco-v1: {ratio: 1}
+  msmarco-v2: {ratio: 1}
+
+exclude_ood: false                # true: leave the out-of-domain collections out entirely (ir_r25_no_ood.yaml)
+# exclude_sources: [scifact]      # leave sources out after the mix is sized (see ir_r25_minus_scifact.yaml)
+# enable_sources: [...]           # turn on sources that have `enabled: false`
+
+replay:
+  fraction: 0.25                  # replay tokens / all training tokens (added on top of the corpus tokens)
+  schedule: constant              # constant | front_loaded | back_loaded
+  skew: 0.0                       # front/back_loaded only: share runs from f*(1+skew) to f*(1-skew) (or reverse)
+  source:                         # the pre-training data itself: Karpathy's shuffled ClimbMix release
+    repo: karpathy/climbmix-400b-shuffle
+    file_pattern: "shard_{:05d}.parquet"
+    shards: [0, 5899]             # drawn in a seeded random order; the 3B model trained on all of these (its data
+                                  # loaders were past shard 5,949 at release; train.py --check warns for a model that
+                                  # stopped earlier)
+  heldout_shard: 6542             # never trained on by any Gaggle model: the "forgetting" measurement
+  heldout_docs: 4000
+
+output:
+  tokens_per_shard: 100000000
+  row_group_docs: 1024

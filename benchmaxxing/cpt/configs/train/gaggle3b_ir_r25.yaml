@@ -1,0 +1,36 @@
+# CPT of the 3.29B Gaggle base model (d34) on the ir_r25 mix: the raw evaluation corpora plus 25% ClimbMix replay.
+# Paths are relative to benchmaxxing/cpt/. Prerequisites: bash setup.sh; bash fetch_models.sh 3b;
+# python prepare_data.py configs/data/ir_r25.yaml.
+#   python train.py configs/train/gaggle3b_ir_r25.yaml --check     # derived settings + validation, no training
+#   python train.py configs/train/gaggle3b_ir_r25.yaml --ngpu 8
+run: gaggle3b_ir_r25                    # checkpoints go to <base_dir>/base_checkpoints/<run>/
+init:
+  dir: models/gaggle-nanochat-pretrained-climbmix-20260924
+  step: 227158
+data: data/ir_r25
+eval_data: data/ir_r25                  # evaluate.py's held-out / seen / replay sets: the same for every arm
+nanochat: third_party/nanochat
+base_dir: work/nanochat_base            # NANOCHAT_BASE_DIR for the trainer (checkpoints, tokenizer link)
+rerank_config: reranker/configs/sft/run1_seed17.yaml   # the reranker recipe export_for_reranker.py points to
+
+tokens:                                 # empty: 95% of the mix's training tokens, i.e. one pass that never wraps
+batch_tokens: 1048576                   # 2^20 tokens per optimizer step: ~11,000 steps on ir_r25
+device_batch_size: 8                    # 2,048-token sequences per GPU per micro-step (as in pre-training)
+fp8: true                               # FP8 matmuls as in pre-training (H100 or newer; set false on older GPUs)
+
+lr:
+  scale: 0.1                            # peak LR = 0.1 x the original run's peak, for all four parameter groups.
+                                        # The released checkpoint ended at ~0.07 x peak, so this is a mild re-warm.
+  warmup_frac: 0.01                     # linear warmup over the first 1% of steps
+  decay_frac: 0.5                       # constant, then linear decay over the last half (pre-training: 0.55)
+  final_frac: 0.0                       # decay to zero
+weight_decay: 0.021764                  # the original run's Muon weight-decay amplitude, used as is (it follows
+                                        # nanochat's cosine to 0 over this run)
+
+eval_every: 250                         # val bpb on the held-out mix (corpus + replay at the run's share)
+eval_tokens: 2097152
+core_metric_every: -1                   # CORE once, at the end, with evaluate.py
+save_every: 500
+keep_checkpoints: 2
+wandb: false                            # true: log to Weights & Biases (WANDB_MODE=online)
+extra_args: {}                          # any other scripts/base_train.py flag, passed through unchanged

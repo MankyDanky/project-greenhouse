@@ -1,0 +1,24 @@
+# Smoke test of prepare_data.py: two small corpora in two groups (ratio 1:3), 25% replay, tiny shards.
+# nfcorpus (group b, up to 2 passes) runs out first and sets the size; scifact (group a) then gets about 0.7 of a
+# pass, i.e. a fixed random subset of its documents.
+#   python prepare_data.py tests/smoke_data.yaml --limit 3000
+extends: ../configs/data/ir_r25.yaml
+name: smoke
+work_dir: work/smoke
+out_dir: data/smoke
+heldout: {fraction: 0.02, max_docs_per_source: 50}
+corpus:
+  - name: scifact
+    group: a
+    source: {type: hf_parquet, repo: BeIR/scifact, file: corpus/corpus-00000-of-00001.parquet, id: _id, title: title, text: text}
+    passes: 1
+  - name: nfcorpus
+    group: b
+    ood: true
+    source: {type: hf_parquet, repo: BeIR/nfcorpus, file: corpus/corpus-00000-of-00001.parquet, id: _id, title: title, text: text}
+    passes: 2
+groups:
+  a: {ratio: 1}
+  b: {ratio: 3}
+replay: {heldout_docs: 200}
+output: {tokens_per_shard: 500000, row_group_docs: 256}

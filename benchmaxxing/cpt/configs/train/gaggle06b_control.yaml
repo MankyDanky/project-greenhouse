@@ -1,0 +1,4 @@
+# Control for gaggle06b_ir_r25: the same number of tokens and schedule, all of it ClimbMix (no corpus text).
+extends: gaggle06b_ir_r25.yaml
+run: gaggle06b_control
+data: data/control_replay_only

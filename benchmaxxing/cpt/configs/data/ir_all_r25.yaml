@@ -1,0 +1,9 @@
+# Option, not used by any run: every corpus in full at its `passes` (BEIR x4 / x1, MS MARCO v1 x2, all of MS MARCO
+# v2), with 25% replay. MS MARCO is then ~90% of the corpus tokens (~10.7B in all).
+extends: ir_r25.yaml
+name: ir_all_r25
+out_dir: data/ir_all_r25
+groups:
+  beir:       {ratio: all}
+  msmarco-v1: {ratio: all}
+  msmarco-v2: {ratio: all}

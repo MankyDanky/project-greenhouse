@@ -1,0 +1,6 @@
+# Smoke test of exclude_ood: tests/smoke_data.yaml without nfcorpus (marked ood). scifact alone then sets the size and
+# gets its full pass.   python prepare_data.py tests/smoke_no_ood.yaml --limit 3000
+extends: smoke_data.yaml
+name: smoke_no_ood
+out_dir: data/smoke_no_ood
+exclude_ood: true

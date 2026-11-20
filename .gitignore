@@ -17,3 +17,9 @@ eval/results/
 retrieve_results_*_top100.jsonl
 # summaries the engine unit tests write to the working directory
 /validation_*.json
+# benchmaxxing/cpt: the built trainer, downloaded checkpoints, caches, data mixes, CPT checkpoints and results
+benchmaxxing/cpt/third_party/
+benchmaxxing/cpt/models/
+benchmaxxing/cpt/work/
+benchmaxxing/cpt/data/
+benchmaxxing/cpt/results/

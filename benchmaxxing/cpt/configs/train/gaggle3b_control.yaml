@@ -1,0 +1,5 @@
+# Control for gaggle3b_ir_r25: the same number of tokens and schedule, all of it ClimbMix (no corpus text).
+# Build its data with configs/data/control_replay_only.yaml after setting replay.tokens there.
+extends: gaggle3b_ir_r25.yaml
+run: gaggle3b_control
+data: data/control_replay_only

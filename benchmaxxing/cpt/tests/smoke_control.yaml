@@ -1,0 +1,7 @@
+# Smoke test of the replay-only control arm (no corpus): python prepare_data.py tests/smoke_control.yaml --limit 3000
+extends: ../configs/data/control_replay_only.yaml
+name: smoke_control
+work_dir: work/smoke
+out_dir: data/smoke_control
+replay: {tokens: 2000000, heldout_docs: 200}
+output: {tokens_per_shard: 500000, row_group_docs: 256}
