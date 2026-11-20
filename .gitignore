@@ -15,3 +15,5 @@ eval/runs/
 eval/results/
 # BM25 candidate files carry document text, including Robust04 and TREC-News: never commit them
 retrieve_results_*_top100.jsonl
+# summaries the engine unit tests write to the working directory
+/validation_*.json
