@@ -1,0 +1,16 @@
+# Fine-tuning and evaluation (all engines). Install torch for your CUDA first:
+#   pip install torch==2.14.0 --index-url https://download.pytorch.org/whl/cu128
+torch==2.14.0
+transformers==5.16.1
+datasets==5.0.1
+accelerate==1.14.0       # the pointwise-CE engine
+peft==0.20.0             # imported by the CE engine; no LoRA is used in any paper row
+pyarrow==25.0.1
+numpy==2.4.6
+pyyaml
+huggingface_hub==1.30.0
+tiktoken==0.14.0
+blobfile                 # tiktoken writes its vocabulary file through it
+wandb==0.29.0            # optional: set wandb_project in a config to log a run
+# Building BM25 candidates (eval/candidates/) additionally needs pyserini and Java 21.
+# The listwise LLM baselines (eval/baselines/listwise/) need rank_llm at 443adf3 and vLLM, in their own environment.

@@ -1,0 +1,12 @@
+424164b5418f5e537fd19b97383c7301166e5738cbfa8e249bc9c10f6b6cd926  qrels.beir-v1.0.0-fiqa-test.txt
+9d822ee3fc9e3b395d7fe25a13d81686f54b2a056992574daa825e792800c959  qrels.beir-v1.0.0-nfcorpus.test.txt
+f8f2c972d3c710d85daa7ead02daf4ffe2bbe3647c9f3904500182f43ddbf4c3  qrels.beir-v1.0.0-robust04.test.txt
+648e2e4c15fc795114bc47664a65e73be59ba600db6a30ead85f8b5fcb4d8c98  qrels.beir-v1.0.0-scidocs-test.txt
+8b7315286f8dc823956025a1fc9c9ff0bfe142d7b409458ccd758cfa0713ccba  qrels.beir-v1.0.0-scifact.test.txt
+0d94dcea5bc3b44a64a1f9b1430f7672fae39fad1c980d581b92890ab0448713  qrels.beir-v1.0.0-trec-covid.test.txt
+81ad5aba09051e0e79ac011a66a23e05bc62c32a2f9e8c10894e51869b2868c2  qrels.beir-v1.0.0-trec-news.test.txt
+8a1f10d550732e4cd91d7fc49846a3784de4040972f583e69285a88f3c5fee92  qrels.dl19-passage.txt
+60d4c34561f9687f8f73e0a752ba80ab80159b3e9c1bedd0a351f747ed6f5684  qrels.dl20-passage.txt
+15d1c6e8b13fd665dd043c43213e331452213ddc70f70b8522600bcce64db427  qrels.dl21-passage.txt
+6d03b5a1b0acc26925b8ba9967469a012ec0491fb55455cd36677c387366cf5f  qrels.dl22-passage.txt
+5a98a95d5714b00c5066593719e5eb7ca93dd13588d0facf7f426a4c9d6b19b8  qrels.dl23-passage.txt

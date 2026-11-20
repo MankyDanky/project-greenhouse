@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+# large artifacts: downloaded models, prepared data, checkpoints, run outputs
+reranker/models/
+reranker/data/
+reranker/checkpoints/
+reranker/logs/
+reranker/tmp/
+reranker/wandb/
+reranker/third_party/nanochat-f37d45c/
+/data/
+/exports/
+eval/qrels/
+eval/runs/
+eval/results/
+# BM25 candidate files carry document text, including Robust04 and TREC-News: never commit them
+retrieve_results_*_top100.jsonl

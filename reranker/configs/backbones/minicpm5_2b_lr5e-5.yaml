@@ -1,0 +1,45 @@
+# Paper: Sec. 6.1, MiniCPM5-2B-Base at 5e-5.
+# Expected mean nDCG@10 (BM25 top-100): TREC DL 0.627, BEIR 0.530.
+# Original run: C_minicpm (Lingwei Gu); 2x H100, 1,931 updates.
+# Engine: multi.  Train: bash launch/train.sh configs/backbones/minicpm5_2b_lr5e-5.yaml <n_gpus>   (from reranker/)
+#
+# C-minicpm: four-backbone comparison under one fair protocol (the paper's Sec. 6.1 protocol). Identical to every other C run
+# except the backbone (native tokenizer/BOS/answer rows) and execution settings.
+backbone: minicpm
+model_name: models/minicpm5-2b-base
+train_parquet: data/rlhn250k_prepared_climbmix_lens/train.parquet   # nanochat-ClimbMix lengths drive G's plan, shared by all four
+output_dir: checkpoints/backbones_minicpm5_2b_lr5e-5
+answer_ids: [2989,6307]
+attn_implementation: sdpa
+# ---- length rule: G's caps, in this model's own tokens ----
+length_rule: caps
+max_query_len: 128
+max_doc_len: 512
+max_tokens_per_batch: 39312
+pack_world: 2
+packing_scaffold: 14
+max_groups: 32
+global_batch_groups: 128
+k_choices: [7, 15, 23]
+seed: 17
+expected_plan_sha256: 04c557c35b37662326d3d96873aa13c7137cab4b614d5f9ebe7ecb272e86977e   # run G's plan: 1,931 steps
+# ---- optimization: G's recipe unchanged, no per-backbone tuning ----
+precision: tf32
+grad_checkpointing: true
+tau: 1.0
+epochs: 1
+lr: 5.0e-5                        # G's LR for every backbone; no ablations
+weight_decay: 0.01
+warmup_steps: 150
+clip: 12.0
+optimizer_state_sharding: false
+# ---- execution (no effect on the gradient) ----
+exec_chunk_tokens: 16384          # from the memory probe per GPU type
+exec_mode: gradcache
+# ---- bookkeeping ----
+milestone_every: 50000
+save_every: 100
+keep_resume: 2
+log_every: 20
+num_workers: 6
+resume: auto

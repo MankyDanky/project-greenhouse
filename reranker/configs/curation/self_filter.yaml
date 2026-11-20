@@ -1,0 +1,72 @@
+# Paper: Sec. 6.4, LCE + self-filtering.
+# Expected mean nDCG@10 (BM25 top-100): TREC DL 0.641, BEIR 0.548.
+# Original run: I; 2x RTX PRO 6000 Blackwell, 1,918 updates.
+# Engine: nanochat.  Train: bash launch/train.sh configs/curation/self_filter.yaml <n_gpus>   (from reranker/)
+#
+# I. RLHN-250K SELF-FILTERED, LCE only — run B's recipe with OUR OWN checkpoint as the judge (2026/09/27)
+# = configs/sft/run1_seed17.yaml on self-filtered data (what B is to A, but with our own judge):
+#   * data: RLHN-250K filtered by run G itself (data_prep/self_filter.py), same rule as the Gemma filter:
+#     drop a positive when > max(9, 0.375*n_neg) negatives outrank it, ArguAna exempt. G's filter is
+#     milder than Gemma's: 14,887 positives (2.6%) and 1,484 rows dropped, vs 29,439 (5.1%) and 6,770;
+#     only 37.5% of its drops are ones Gemma also dropped. 246,050 rows remain.
+#   * loss: still LCE only. The parquet carries G's own ranks, so rkd/rkd_agree are logged (agreement
+#     with its own earlier ordering) but never enter the loss -- w_rkd stays 0.
+# Differences from A (configs/backbones/nanochat_d34_lr5e-5.yaml), all forced by the backbone:
+#   * backbone: castorini/gaggle-nanochat-pretrained-climbmix-20260924 (step 227,158; the completed run's best-CORE checkpoint: CORE 0.4597, val bpb 0.5958, vs 0.4353 / 0.6160 for the 09/22 interim one), an UPSTREAM nanochat checkpoint
+#     (karpathy/nanochat @ 92d63d4): 3.22B parameters, 32,768-token vocabulary, value embeddings,
+#     embedding smearing, per-layer resid/x0 mixing, a mid-layer backout and sliding-window
+#     attention (SSSL). The HF NanoChat port cannot represent any of that, so the run uses
+#     upstream's own GPT class through src/modeling_nanochat_upstream.py (verified against
+#     upstream's forward to 3.8e-6 on the two answer logits).
+#   * answer tokens are the 32k tokenizer's: ' true' = 2737, ' false' = 7863 (A: 2674 / 6812).
+#   * data lengths re-measured with that tokenizer, so the step packing differs from A's.
+# Everything else is A: same data rows, LCE at tau = 1, 512/128 truncation, 128-group global batch,
+# AdamW 5e-5 with 150 warmup steps and cosine decay, fp32 with TF32 matmuls, seed 17.
+# ---- model, prompt, data -----------------------------------------------------------------
+backbone_impl: upstream     # use src/modeling_nanochat_upstream.py (not the HF NanoChat port)
+model_name: models/gaggle-nanochat-pretrained-climbmix-20260924   # upstream checkpoint dir: model_227158.pt + meta_227158.json + tokenizer.json
+nanochat_src: third_party/nanochat-92d63d4   # nanochat checkout @ 92d63d4 (NANOCHAT_DTYPE=float32)
+prompt: nochat              # "<|bos|>Query: {query}\nPassage: {passage}\nRelevant:"  score = logit(" true") - logit(" false")
+train_parquet: data/rlhn250k_self_filtered/train.parquet   # RLHN-250K, filtered by run G (see data_prep/self_filter.py)
+output_dir: checkpoints/curation_self_filter
+max_doc_len: 512
+max_query_len: 128
+# ---- model setup ----------------------------------------------------------------------------
+lora: false                 # full fine-tuning of all 3.22B parameters
+attn_implementation: sdpa   # upstream picks its SDPA path automatically in fp32 (its FA3 kernels are bf16-only)
+precision: tf32             # fp32 weights, activations and optimizer state; TF32 matmuls; no autocast
+grad_checkpointing: true
+# ---- loss --------------------------------------------------------------------------------
+tau: 1.0                    # LCE only
+w_rkd: 0.0                  # rank distillation OFF; teacher agreement is logged, not trained on
+rkd_subset_weights: {arguana: 0.0}   # counter-argument retrieval: a relevance teacher is inverted there
+# ---- batching ---------------------------------------------------------------------------
+k_choices: [7, 15, 23]
+global_batch_groups: 128    # groups per optimizer step, independent of GPU count and memory
+max_groups: 32
+max_tokens_per_batch: 39312   # PINNED: the per-GPU budget this row ran with on 2x RTX PRO 6000 Blackwell (96 GB). It decides which
+                              # query groups share an optimizer step, i.e. the training plan itself.
+pack_world: 2                 # pack as on the paper's 2 GPUs, whatever the GPU count here
+require_exact_budget: true    # stop instead of silently repacking on a GPU that cannot afford it
+                              # gradients and AdamW state leave ~80 GiB on a 141 GB H200)
+mem_per_1k_tok_gib: 1.0
+# no pack_world / require_exact_budget: this is a new run, not a reproduction, so the trainer
+# sizes the budget from the GPU it lands on.
+# ---- optimization ------------------------------------------------------------------------
+seed: 17
+epochs: 1
+lr: 5.0e-5
+weight_decay: 0.01
+warmup_steps: 150
+clip: 12.0
+# ---- bookkeeping (no effect on training) ----------------------------------------------------
+num_workers: 6
+resume: auto
+save_every: 200
+keep_ckpts: 1
+log_every: 20
+wandb_project:              # set a W&B project name to log the run
+wandb_entity:
+wandb_run_name: I_climbmix0924_selffiltered
+wandb_group:
+wandb_tags: [rlhn250k, nanochat-4b-climbmix-0924, pointwise, lce]

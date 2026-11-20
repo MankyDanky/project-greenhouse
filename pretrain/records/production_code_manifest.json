@@ -1,0 +1,75 @@
+{
+  "files": [
+    {
+      "path": "base_train.py",
+      "sha256": "607117aa5ce071bef91d4f89ab06dc0724731c874638ab3b68f639bc4ea52d93",
+      "size": 38266
+    },
+    {
+      "path": "checkpoint_state.py",
+      "sha256": "6c66728f6b6fc1226bc3b20dfeaec78b6f968d9894db894dd12230e9d5d6c952",
+      "size": 1775
+    },
+    {
+      "path": "completion_evidence.py",
+      "sha256": "69287a54e7f297aedb3e1a0600688312e143bd627580d1d40b90eddc4ce490a7",
+      "size": 6478
+    },
+    {
+      "path": "corpus_manifest.py",
+      "sha256": "e94fc841f7422985dfa36ec83270c561209240441c2401b91bd8788eb82b6572",
+      "size": 6883
+    },
+    {
+      "path": "fir_config.example.sh",
+      "sha256": "05b3cbc00e851d09655149cbf8255d713bfaa96e4476e842a1a82a216a85ae26",
+      "size": 1717
+    },
+    {
+      "path": "freeze_code.py",
+      "sha256": "9d6a6c88a1df9463dfafc8e54883523d8a772a69f36351518204a18ea226ab26",
+      "size": 783
+    },
+    {
+      "path": "node_launch.sh",
+      "sha256": "431b2dbb609c39ebaffb51a58ef5cd64652b36265d4805d50f5607c4a226b329",
+      "size": 2012
+    },
+    {
+      "path": "preflight.sh",
+      "sha256": "6d8b645f39aa6d1d49e8ea87ce07db8a0c04e8dea84eeca912d2c44d8e7879d9",
+      "size": 569
+    },
+    {
+      "path": "production_chain.py",
+      "sha256": "7e97e962ba1cee9ecaf09c48ecba5f9cd7c281ade3961fb3f9b2ee8e924d20bd",
+      "size": 4633
+    },
+    {
+      "path": "production_clock.py",
+      "sha256": "a0b61793c24c76c0216dc37936ad98f508c9262ac365d642e672eb271380eef5",
+      "size": 2760
+    },
+    {
+      "path": "production_leg.sbatch",
+      "sha256": "039b0e33cf28b29b995d2302eadd705087f8fedaa5745629ba8ba1f6a9973392",
+      "size": 4696
+    },
+    {
+      "path": "production_preflight.py",
+      "sha256": "4ee822996d671c6168c0bff5ba893ea0059c9d024b0588d0255be65ddc73403f",
+      "size": 5540
+    },
+    {
+      "path": "production_runtime.py",
+      "sha256": "1ee6880060c1621dd27bf3f153963ebc414c6dc545e06f65533159d448c2b7e4",
+      "size": 13446
+    },
+    {
+      "path": "winner_manifest.py",
+      "sha256": "3337571802e450ac21c6cb21b46df94023983bf1695f0927cf9d93a1a880381b",
+      "size": 5779
+    }
+  ],
+  "format": "d34-production-code-v1"
+}

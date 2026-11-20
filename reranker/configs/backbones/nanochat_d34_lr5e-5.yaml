@@ -1,0 +1,58 @@
+# Paper: Sec. 6.1, nanochat-d34 backbone.
+# Expected mean nDCG@10 (BM25 top-100): TREC DL 0.621, BEIR 0.521.
+# Original run: A; 4x RTX A6000, 11,121-token budget, 1,929 updates.
+# Engine: nanochat.  Train: bash launch/train.sh configs/backbones/nanochat_d34_lr5e-5.yaml <n_gpus>   (from reranker/)
+#
+# A. RLHN-250K, LCE (2026/09/16)
+# Verified against the config stored in the run's ckpt_final.pt (see verify_configs.py).
+# Trained on: 4x RTX A6000 48 GB; 1,929 steps.
+
+# ---- model, prompt, data -----------------------------------------------------------------
+model_name: models/nanochat-d34-base-hf   # karpathy/nanochat-d34 BASE (step 169150), fp32 HF conversion (convert_karpathy_base.py)
+prompt: nochat             # "<|bos|>Query: {query}\nPassage: {passage}\nRelevant:"  score = logit(" true") - logit(" false")
+train_parquet: data/rlhn250k_prepared/train.parquet   # RLHN-250K, prepared (247,534 rows)
+output_dir: checkpoints/backbones_nanochat_d34_lr5e-5
+max_doc_len: 512            # passage tokens (nanochat tokenizer), same cap at evaluation
+max_query_len: 128          # query tokens
+
+# ---- model setup ----------------------------------------------------------------------------
+lora: false                 # full fine-tuning of all 2.07B parameters
+attn_implementation: sdpa   # causal attention (the decoder's own mask); score read at the last token
+precision: tf32             # fp32 weights, activations and optimizer state; TF32 matmuls; no autocast
+grad_checkpointing: true
+
+# ---- loss --------------------------------------------------------------------------------
+tau: 1.0                    # LCE (softmax cross-entropy over 1 positive + K negatives) temperature
+w_rkd: 0.0                  # no rank distillation (this data has no teacher ranks)
+
+# ---- batching ---------------------------------------------------------------------------
+# Each row gets the largest K in k_choices it can supply (rows with < 7 negatives are dropped).
+k_choices: [7, 15, 23]
+global_batch_groups: 128    # groups per optimizer step, independent of GPU count and memory
+max_groups: 32              # per-microbatch group cap (scaled down for larger K)
+# Step packing depends on the per-GPU token budget and the GPU count. Both are pinned to the
+# values the original run used, so the same groups land in the same steps:
+max_tokens_per_batch: 11121   # per-GPU budget the run used (the trainer lowers it if the GPU is smaller)
+pack_world: 4               # pack steps as if on 4 GPUs; run on any divisor of it
+require_exact_budget: true   # stop rather than silently repack the epoch on a GPU that cannot give this budget
+mem_per_1k_tok_gib: 1.0     # memory model used to size the budget
+
+# ---- optimization ------------------------------------------------------------------------
+seed: 17
+epochs: 1
+lr: 5.0e-5                  # AdamW (betas 0.9, 0.95), linear warmup then cosine decay to 0
+weight_decay: 0.01
+warmup_steps: 150
+clip: 12.0                  # gradient-norm clip
+
+# ---- bookkeeping (no effect on training) ----------------------------------------------------
+num_workers: 6
+resume: auto
+save_every: 200
+keep_ckpts: 1
+log_every: 20
+wandb_project:              # set a W&B project name to log the run
+wandb_entity:
+wandb_run_name: A_rlhn250k
+wandb_group:
+wandb_tags: [rlhn250k, nanochat-d34, pointwise, lce]

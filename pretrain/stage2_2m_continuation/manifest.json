@@ -1,0 +1,38 @@
+{
+ "created_at": "2026-09-13",
+ "experiment": "20260913_lr_batch",
+ "host": "killarney.alliancecan.ca",
+ "checkpoint_source": "stage-1 checkpoint at step 136316 (D34_CHECKPOINT_DIR)",
+ "source_step": 136316,
+ "source_tokens": 92537618432,
+ "token_budget_per_branch": 2147483648,
+ "reference_batch": 1048576,
+ "horizon_steps": 321817,
+ "eval_tokens": 41943040,
+ "eval_added_tokens": [
+  0,
+  16777216,
+  33554432,
+  67108864,
+  134217728,
+  268435456,
+  536870912,
+  805306368,
+  1073741824,
+  1342177280,
+  1610612736,
+  1879048192,
+  2147483648
+ ],
+ "upstream_commit": "92d63d4e8bb4df75c3b71618f31ddde2378b2bcd",
+ "branches": [
+  {
+   "branch": 3,
+   "tag": "d34abl136316_b2m_lr014142",
+   "total_batch_size": 2097152,
+   "matrix_lr": 0.01414213562373095,
+   "updates": 1024,
+   "end_step": 137340
+  }
+ ]
+}

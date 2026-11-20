@@ -1,0 +1,455 @@
+# Every number in the paper that this repo reproduces: row -> config, scorer, and the printed scores.
+# paper/results/recorded.json holds the scores recorded when each run was evaluated (4 decimals);
+# python paper/check_results.py compares them, or your own eval/results, with the paper.
+# Not reproduced here (code not included): GPT-6.1 Sol, Jev, RLHN Qwen2.5-3B; rows copied from prior work
+# (RankVicuna, RankZephyr, FirstMistral, Rank0, Rank1) are cited, not run.
+sft.run1:
+  scorer: ours
+  recorded_from: experiments log (4 decimals)
+  tables:
+  - Sec. 5 run-to-run variability and model averaging
+  config: reranker/configs/sft/run1_seed17.yaml
+  original_run: G
+  paper:
+    dl19: 0.755
+    dl20: 0.72
+    dl21: 0.715
+    dl22: 0.533
+    dl23: 0.485
+    covid: 0.858
+    news: 0.51
+    robust04: 0.591
+    nfc: 0.381
+    scifact: 0.784
+    scidocs: 0.233
+    fiqa: 0.451
+  paper_means:
+    dl: 0.641
+    beir: 0.544
+sft.run2:
+  scorer: ours
+  recorded_from: experiments log (4 decimals)
+  tables:
+  - Sec. 5 run-to-run variability and model averaging
+  config: reranker/configs/sft/run2_seed18.yaml
+  original_run: S18
+  paper:
+    dl19: 0.758
+    dl20: 0.723
+    dl21: 0.707
+    dl22: 0.531
+    dl23: 0.48
+    covid: 0.852
+    news: 0.512
+    robust04: 0.584
+    nfc: 0.383
+    scifact: 0.781
+    scidocs: 0.235
+    fiqa: 0.448
+  paper_means:
+    dl: 0.64
+    beir: 0.542
+sft.run3:
+  scorer: ours
+  recorded_from: experiments log (4 decimals)
+  tables:
+  - Sec. 5 run-to-run variability and model averaging
+  config: reranker/configs/sft/run3_seed17_exact_budget.yaml
+  original_run: Nour's G reproduction
+  paper:
+    dl19: 0.755
+    dl20: 0.72
+    dl21: 0.714
+    dl22: 0.533
+    dl23: 0.481
+    covid: 0.862
+    news: 0.516
+    robust04: 0.591
+    nfc: 0.38
+    scifact: 0.784
+    scidocs: 0.234
+    fiqa: 0.452
+  paper_means:
+    dl: 0.641
+    beir: 0.545
+sft.run4:
+  scorer: ours
+  recorded_from: experiments log (4 decimals)
+  tables:
+  - Sec. 5 run-to-run variability and model averaging
+  config: reranker/configs/sft/run4_seed17_gradcache.yaml
+  original_run: R0
+  paper:
+    dl19: 0.75
+    dl20: 0.72
+    dl21: 0.715
+    dl22: 0.528
+    dl23: 0.48
+    covid: 0.86
+    news: 0.515
+    robust04: 0.592
+    nfc: 0.377
+    scifact: 0.783
+    scidocs: 0.234
+    fiqa: 0.454
+  paper_means:
+    dl: 0.638
+    beir: 0.545
+sft.soup:
+  scorer: ours
+  recorded_from: experiments log (4 decimals)
+  tables:
+  - Sec. 5 run-to-run variability and model averaging
+  original_run: soup of runs 1-4
+  paper:
+    dl19: 0.757
+    dl20: 0.723
+    dl21: 0.714
+    dl22: 0.533
+    dl23: 0.48
+    covid: 0.859
+    news: 0.515
+    robust04: 0.592
+    nfc: 0.38
+    scifact: 0.79
+    scidocs: 0.236
+    fiqa: 0.455
+  paper_means:
+    dl: 0.641
+    beir: 0.547
+backbones.nanochat_d34_lr5e-5:
+  scorer: ours
+  recorded_from: experiments log (4 decimals)
+  tables:
+  - Sec. 6.1 different backbones
+  config: reranker/configs/backbones/nanochat_d34_lr5e-5.yaml
+  original_run: A
+  paper_means:
+    dl: 0.621
+    beir: 0.521
+backbones.gemma4_e2b_lr5e-5:
+  scorer: gemma4
+  recorded_from: experiments log (4 decimals)
+  tables:
+  - Sec. 6.1 different backbones
+  config: reranker/configs/backbones/gemma4_e2b_lr5e-5.json
+  original_run: Nour's Gemma
+  paper_means:
+    dl: 0.627
+    beir: 0.537
+backbones.qwen35_4b_lr5e-5:
+  scorer: qwen35
+  recorded_from: experiments log (4 decimals)
+  tables:
+  - Sec. 6.1 different backbones
+  config: reranker/configs/backbones/qwen35_4b_lr5e-5.json
+  original_run: Nour's Qwen
+  paper_means:
+    dl: 0.626
+    beir: 0.53
+backbones.minicpm5_2b_lr5e-5:
+  scorer: multi
+  recorded_from: experiments log (4 decimals)
+  tables:
+  - Sec. 6.1 different backbones
+  config: reranker/configs/backbones/minicpm5_2b_lr5e-5.yaml
+  original_run: C_minicpm
+  paper_means:
+    dl: 0.627
+    beir: 0.53
+backbones.gemma4_e2b_lr1e-5:
+  scorer: multi
+  recorded_from: experiments log (4 decimals)
+  tables:
+  - Sec. 6.1 different backbones
+  config: reranker/configs/backbones/gemma4_e2b_lr1e-5.yaml
+  original_run: C2_gemma
+  paper_means:
+    dl: 0.64
+    beir: 0.546
+backbones.minicpm5_2b_lr1e-5:
+  scorer: multi
+  recorded_from: experiments log (4 decimals)
+  tables:
+  - Sec. 6.1 different backbones
+  config: reranker/configs/backbones/minicpm5_2b_lr1e-5.yaml
+  original_run: C2_minicpm
+  paper_means:
+    dl: 0.642
+    beir: 0.551
+data.rlhn680k:
+  scorer: ours
+  recorded_from: experiments log (4 decimals)
+  tables:
+  - Sec. 6.2 training data
+  config: reranker/configs/data/rlhn680k.yaml
+  original_run: N
+  paper_means:
+    dl: 0.646
+    beir: 0.545
+data.tevatron_msmarco:
+  scorer: ours
+  recorded_from: experiments log (4 decimals)
+  tables:
+  - Sec. 6.2 training data
+  config: reranker/configs/data/tevatron_msmarco.yaml
+  original_run: T
+  paper_means:
+    dl: 0.618
+    beir: 0.47
+attention.causal_qpq:
+  scorer: ours
+  recorded_from: experiments log (4 decimals)
+  tables:
+  - Sec. 6.3 causal versus bidirectional
+  config: reranker/configs/attention/causal_qpq.yaml
+  original_run: K
+  paper_means:
+    dl: 0.647
+    beir: 0.551
+attention.causal_meanpool:
+  scorer: ours
+  recorded_from: experiments log (4 decimals)
+  tables:
+  - Sec. 6.3 causal versus bidirectional
+  config: reranker/configs/attention/causal_meanpool.yaml
+  original_run: P
+  paper_means:
+    dl: 0.642
+    beir: 0.543
+attention.mntp_standard:
+  scorer: ours
+  recorded_from: experiments log (4 decimals)
+  tables:
+  - Sec. 6.3 causal versus bidirectional
+  config: reranker/configs/attention/mntp_standard.yaml
+  original_run: L
+  paper_means:
+    dl: 0.643
+    beir: 0.544
+attention.mntp_mask:
+  scorer: ours
+  recorded_from: experiments log (4 decimals)
+  tables:
+  - Sec. 6.3 causal versus bidirectional
+  config: reranker/configs/attention/mntp_mask.yaml
+  original_run: M
+  paper_means:
+    dl: 0.643
+    beir: 0.543
+attention.mntp_meanpool:
+  scorer: ours
+  recorded_from: experiments log (4 decimals)
+  tables:
+  - Sec. 6.3 causal versus bidirectional
+  config: reranker/configs/attention/mntp_meanpool.yaml
+  original_run: O
+  paper_means:
+    dl: 0.638
+    beir: 0.538
+curation.self_filter:
+  scorer: ours
+  recorded_from: experiments log (4 decimals)
+  tables:
+  - Sec. 6.4 self-filtering and self-distillation
+  config: reranker/configs/curation/self_filter.yaml
+  original_run: I
+  paper_means:
+    dl: 0.641
+    beir: 0.548
+curation.self_filter_self_kd:
+  scorer: ours
+  recorded_from: experiments log (4 decimals)
+  tables:
+  - Sec. 6.4 self-filtering and self-distillation
+  config: reranker/configs/curation/self_filter_self_kd.yaml
+  original_run: J2
+  paper_means:
+    dl: 0.64
+    beir: 0.547
+loss.pointwise_ce:
+  scorer: ce
+  recorded_from: experiments log (4 decimals)
+  tables:
+  - Sec. 6.5 loss functions
+  config: reranker/configs/loss/pointwise_ce.yaml
+  original_run: Nour's CE
+  paper_means:
+    dl: 0.628
+    beir: 0.528
+baseline.bm25:
+  scorer: bm25
+  recorded_from: experiments log (4 decimals)
+  tables:
+  - headline TREC DL
+  - headline BEIR
+  paper:
+    dl19: 0.506
+    dl20: 0.48
+    dl21: 0.446
+    dl22: 0.269
+    dl23: 0.263
+    covid: 0.595
+    news: 0.395
+    robust04: 0.407
+    nfc: 0.322
+    scifact: 0.679
+    scidocs: 0.149
+    fiqa: 0.236
+  paper_means:
+    dl: 0.393
+    beir: 0.398
+baseline.oracle:
+  scorer: oracle
+  recorded_from: experiments log (4 decimals)
+  tables:
+  - headline TREC DL
+  - headline BEIR
+  paper:
+    dl19: 0.892
+    dl20: 0.871
+    dl21: 0.835
+    dl22: 0.678
+    dl23: 0.669
+    covid: 0.975
+    news: 0.827
+    robust04: 0.837
+    nfc: 0.544
+    scifact: 0.927
+    scidocs: 0.443
+    fiqa: 0.59
+  paper_means:
+    dl: 0.789
+    beir: 0.735
+baseline.gemma4_26b_listwise:
+  scorer: listwise
+  recorded_from: experiments log (4 decimals)
+  tables:
+  - headline TREC DL
+  - headline BEIR
+  paper:
+    dl19: 0.743
+    dl20: 0.705
+    dl21: 0.723
+    dl22: 0.516
+    dl23: 0.497
+    covid: 0.846
+    news: 0.492
+    robust04: 0.662
+    nfc: 0.387
+    scifact: 0.805
+    scidocs: 0.208
+    fiqa: 0.439
+  paper_means:
+    dl: 0.637
+    beir: 0.548
+baseline.qwen38_27b_listwise:
+  scorer: listwise
+  recorded_from: experiments log (4 decimals)
+  tables:
+  - headline TREC DL
+  - headline BEIR
+  paper:
+    dl19: 0.732
+    dl20: 0.705
+    dl21: 0.716
+    dl22: 0.52
+    dl23: 0.492
+    covid: 0.849
+    news: 0.505
+    robust04: 0.647
+    nfc: 0.39
+    scifact: 0.803
+    scidocs: 0.225
+    fiqa: 0.462
+  paper_means:
+    dl: 0.633
+    beir: 0.554
+baseline.jina_v3:
+  scorer: jinav3
+  recorded_from: experiments log (4 decimals)
+  tables:
+  - headline TREC DL
+  - headline BEIR
+  paper:
+    dl19: 0.715
+    dl20: 0.696
+    dl21: 0.689
+    dl22: 0.503
+    dl23: 0.453
+    covid: 0.821
+    news: 0.459
+    robust04: 0.543
+    nfc: 0.359
+    scifact: 0.748
+    scidocs: 0.215
+    fiqa: 0.43
+  paper_means:
+    dl: 0.611
+    beir: 0.511
+baseline.monot5_3b:
+  scorer: monot5
+  recorded_from: experiments log (4 decimals)
+  tables:
+  - headline TREC DL
+  - headline BEIR
+  paper:
+    dl19: 0.719
+    dl20: 0.689
+    dl21: 0.665
+    dl22: 0.497
+    dl23: 0.45
+    covid: 0.803
+    news: 0.487
+    robust04: 0.56
+    nfc: 0.373
+    scifact: 0.763
+    scidocs: 0.191
+    fiqa: 0.46
+  paper_means:
+    dl: 0.604
+    beir: 0.52
+baseline.qwen3_rr_4b:
+  scorer: qwen3
+  recorded_from: experiments log (4 decimals)
+  tables:
+  - headline TREC DL
+  - headline BEIR
+  paper:
+    dl19: 0.739
+    dl20: 0.693
+    dl21: 0.682
+    dl22: 0.505
+    dl23: 0.456
+    covid: 0.853
+    news: 0.497
+    robust04: 0.589
+    nfc: 0.374
+    scifact: 0.794
+    scidocs: 0.235
+    fiqa: 0.445
+  paper_means:
+    dl: 0.615
+    beir: 0.541
+baseline.qwen3_rr_8b:
+  scorer: qwen3
+  recorded_from: experiments log (4 decimals)
+  tables:
+  - headline TREC DL
+  - headline BEIR
+  paper:
+    dl19: 0.731
+    dl20: 0.665
+    dl21: 0.663
+    dl22: 0.512
+    dl23: 0.454
+    covid: 0.843
+    news: 0.512
+    robust04: 0.583
+    nfc: 0.371
+    scifact: 0.794
+    scidocs: 0.225
+    fiqa: 0.456
+  paper_means:
+    dl: 0.605
+    beir: 0.541

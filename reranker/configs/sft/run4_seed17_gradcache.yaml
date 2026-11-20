@@ -1,0 +1,49 @@
+# Paper: Sec. 5, baseline run 4 (and the checkpoint-trajectory table).
+# Expected mean nDCG@10 (BM25 top-100): TREC DL 0.638, BEIR 0.545.
+# Original run: R0 (Lingwei Gu); 2x H100 80GB, GradCache chunks of 16,384 tokens, 1,931 updates.
+# Engine: multi.  Train: bash launch/train.sh configs/sft/run4_seed17_gradcache.yaml <n_gpus>   (from reranker/)
+#
+# R0 = greenhouse run G reproduced on Alliance (configs/sft/run1_seed17.yaml).
+# Every training setting is G's; only execution placement differs (exec_chunk_tokens: GPU-dependent, same gradient).
+backbone: nanochat
+builder: greenhouse               # greenhouse prompt_builder_nc.PairBuilder (nochat), token-identical to G
+backbone_impl: upstream           # these three keys let greenhouse's own eval loader score R0 exactly like G
+prompt: nochat
+nanochat_src: third_party/nanochat-92d63d4
+model_name: models/gaggle-nanochat-pretrained-climbmix-20260924          # castorini/gaggle-nanochat-pretrained-climbmix-20260924 @ 0b344cdd (step 227,158)
+train_parquet: data/rlhn250k_prepared_climbmix_lens/train.parquet
+output_dir: checkpoints/sft_run4_seed17_gradcache
+answer_ids: [2737, 7863]          # " true" / " false"
+attn_implementation: sdpa
+# ---- length rule and the frozen plan (G's) ----
+length_rule: caps
+max_query_len: 128
+max_doc_len: 512
+max_tokens_per_batch: 39312
+pack_world: 2
+packing_scaffold: 14
+max_groups: 32
+global_batch_groups: 128
+k_choices: [7, 15, 23]
+seed: 17
+expected_plan_sha256: 04c557c35b37662326d3d96873aa13c7137cab4b614d5f9ebe7ecb272e86977e
+# ---- optimization (G's) ----
+precision: tf32
+grad_checkpointing: true
+tau: 1.0
+epochs: 1
+lr: 5.0e-5
+weight_decay: 0.01
+warmup_steps: 150
+clip: 12.0
+optimizer_state_sharding: false
+# ---- execution (no effect on the gradient) ----
+exec_chunk_tokens: 16384          # 2x H100 80GB, as run 4 ran; 39312 runs unsplit on 2x H200
+exec_mode: gradcache
+# ---- bookkeeping ----
+milestone_every: 50000
+save_every: 100
+keep_resume: 2
+log_every: 20
+num_workers: 6
+resume: auto

@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use this code or the Gaggle models, please cite the paper."
+title: "Project Greenhouse: Progress Toward Fully Open and Sovereign Agentic Search"
+authors:
+  - family-names: Lin
+    given-names: Jimmy
+  - family-names: Sharifymoghaddam
+    given-names: Sahel
+  - family-names: Gu
+    given-names: Lingwei
+  - family-names: Jedidi
+    given-names: Nour
+year: 2026
+identifiers:
+  - type: other
+    value: "arXiv:2610.11922"
+url: "https://arxiv.org/abs/2610.11922"
+license: Apache-2.0

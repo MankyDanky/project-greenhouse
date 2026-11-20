@@ -1,0 +1,15 @@
+{
+  "native_full_vocab_softcapped_logits_and_gradients": true,
+  "right_padding": true,
+  "PLE_and_shared_KV_gradients": true,
+  "gradcache_with_gradient_checkpointing": true,
+  "ordinary_autograd_chunk_oracle": true,
+  "adamw_checkpoint_roundtrip": true,
+  "all_text_parameters_trainable": {
+    "backbone": 498104,
+    "head": 0,
+    "trainable": 498104
+  },
+  "device": "cpu",
+  "initial_lce_loss": 1.3448083400726318
+}

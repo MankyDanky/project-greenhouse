@@ -1,0 +1,110 @@
+# Paper: Sec. 6.3, MNTP appended mask.
+# Expected mean nDCG@10 (BM25 top-100): TREC DL 0.643, BEIR 0.543.
+# Original run: M; 2x H200 NVL, 60,000-token budget.
+# Engine: nanochat.  Train: bash launch/train.sh configs/attention/mntp_mask.yaml <n_gpus>   (from reranker/)
+#
+# M. RLHN-250K, LCE — run L plus the MNTP MASK-APPEND READOUT (2026/10/01)
+# M = L with ONE change: prompt nochat_mntp instead of nochat.
+#     L:  <|bos|>Query: {q}\nPassage: {p}\nRelevant:                  score read at ":"
+#     M:  <|bos|>Query: {q}\nPassage: {p}\nRelevant:<|output_end|>    score read at ":" (offset 1)
+#
+# Why. MNTP trains "the state at t predicts the token at t+1, where t+1 holds [MASK] and t sees both
+# sides". L reads the LAST token, which has no right-hand context and no mask marking the slot -- the
+# one regime the bidirectional adaptation degraded. Measured on 35,840 identical corpus positions:
+#   plain next-token accuracy   causal 0924 0.4787   ->   bidir 0930 0.4016   (-0.077)
+#   masked (MNTP) accuracy      causal 0924 0.0369   ->   bidir 0930 0.7146   (+0.678)
+# So the backbone is excellent at the masked prediction and worse at the one L reads. M appends the
+# mask token so the readout position sees the layout MNTP trained, at the cost of one token.
+# A zero-shot probe could not separate the two (both at chance for an un-finetuned base model), so
+# this is settled by the training curve against L and G at matched steps.
+#
+# --- L's header, for reference -------------------------------------------------------------------
+# L. RLHN-250K, LCE — run G's recipe on the BIDIRECTIONAL ClimbMix checkpoint (2026/09/30)
+# The ONLY change from G is the backbone and the attention direction that backbone requires:
+#   castorini/nanochat-4b-climbmix-bidir-20260930 = the causal ClimbMix run continued for 41.75B
+#   tokens of MNTP with bidirectional attention (sliding windows (w,0) -> (w,w)), from its step
+#   209,158; held-out masked-token accuracy 79.58% / 0.8010 nats, against 19.1% / 5.168 at the
+#   flip. Same architecture as the causal release (its gpt.py differs from upstream @92d63d4 only
+#   in the attention call), same 32k tokenizer, 3.29B parameters.
+# Data, prompt, loss, batch, optimiser, schedule, precision and seed are G's, untouched, so L - G
+# isolates bidirectional attention: query tokens can now see the passage.
+#
+# Attention: the release runs bidirectionally via NANOCHAT_BIDIRECTIONAL=1 in its own patched
+# gpt.py, which has no padding mask (pretraining packs, it never pads). A reranking batch is
+# right-padded, so this run uses src/bidirectional.py instead: the same symmetric band, plus a
+# padding mask, so a real token never attends to a pad. Verified against the release's own
+# implementation before launch (diag/bidir_parity.py).
+#
+# --- G's header, for reference -------------------------------------------------------------
+# G. RLHN-250K, LCE — run A's recipe on the FINAL ClimbMix checkpoint (2026/09/25)
+# Differences from A (configs/backbones/nanochat_d34_lr5e-5.yaml), all forced by the backbone:
+#   * backbone: castorini/gaggle-nanochat-pretrained-climbmix-20260924 (step 227,158; the completed run's best-CORE checkpoint: CORE 0.4597, val bpb 0.5958, vs 0.4353 / 0.6160 for the 09/22 interim one), an UPSTREAM nanochat checkpoint
+#     (karpathy/nanochat @ 92d63d4): 3.22B parameters, 32,768-token vocabulary, value embeddings,
+#     embedding smearing, per-layer resid/x0 mixing, a mid-layer backout and sliding-window
+#     attention (SSSL). The HF NanoChat port cannot represent any of that, so the run uses
+#     upstream's own GPT class through src/modeling_nanochat_upstream.py (verified against
+#     upstream's forward to 3.8e-6 on the two answer logits).
+#   * answer tokens are the 32k tokenizer's: ' true' = 2737, ' false' = 7863 (A: 2674 / 6812).
+#   * data lengths re-measured with that tokenizer, so the step packing differs from A's.
+# Everything else is A: same data rows, LCE at tau = 1, 512/128 truncation, 128-group global batch,
+# AdamW 5e-5 with 150 warmup steps and cosine decay, fp32 with TF32 matmuls, seed 17.
+
+# ---- model, prompt, data -----------------------------------------------------------------
+backbone_impl: upstream     # use src/modeling_nanochat_upstream.py (not the HF NanoChat port)
+model_name: models/gaggle-nanochat-pretrained-climbmix-bidirectional-20260929   # model_229067.pt + meta_229067.json + tokenizer.json (tokenizer copied from the causal release; identical per the model card)
+nanochat_src: third_party/nanochat-92d63d4   # nanochat checkout @ 92d63d4 (NANOCHAT_DTYPE=float32)
+prompt: nochat_mntp         # "<|bos|>Query: {q}\nPassage: {p}\nRelevant:<|output_end|>", scored at ":"
+                            # (readout_offset 1, mask id 32767 appended by id: our tokenizer.json
+                            # omits the 32759-32767 special range)
+train_parquet: data/rlhn250k_prepared_climbmix_lens/train.parquet   # RLHN-250K, lengths from the 32k tokenizer
+output_dir: checkpoints/attention_mntp_mask
+max_doc_len: 512
+max_query_len: 128
+
+# ---- model setup ----------------------------------------------------------------------------
+lora: false                 # full fine-tuning of all 3.22B parameters
+attn_implementation: sdpa   # upstream picks its SDPA path automatically in fp32 (its FA3 kernels are bf16-only)
+bidirectional: true        # <-- THE CHANGE. src/bidirectional.py: symmetric windows (|i-j| <= w),
+                           # padding masked, no document isolation needed (one pair per sequence).
+precision: tf32             # fp32 weights, activations and optimizer state; TF32 matmuls; no autocast
+grad_checkpointing: true
+
+# ---- loss --------------------------------------------------------------------------------
+tau: 1.0                    # LCE only
+w_rkd: 0.0                  # no rank distillation (this data has no teacher ranks)
+
+# ---- batching ---------------------------------------------------------------------------
+k_choices: [7, 15, 23]
+global_batch_groups: 128    # groups per optimizer step, independent of GPU count and memory
+max_groups: 32
+max_tokens_per_batch: 60000   # PINNED: the per-GPU budget this row ran with on 2x H200 NVL (141 GB). It decides which
+                              # query groups share an optimizer step, i.e. the training plan itself.
+pack_world: 2                 # pack as on the paper's 2 GPUs, whatever the GPU count here
+require_exact_budget: true    # stop instead of silently repacking on a GPU that cannot afford it
+                              # gradients and AdamW state leave ~80 GiB on a 141 GB H200)
+mem_per_1k_tok_gib: 1.0
+# no pack_world / require_exact_budget: this is a new run, not a reproduction, so the trainer
+# sizes the budget from the GPU it lands on.
+
+# ---- optimization ------------------------------------------------------------------------
+seed: 17
+epochs: 1
+lr: 5.0e-5
+weight_decay: 0.01
+warmup_steps: 150
+clip: 12.0
+
+# ---- bookkeeping (no effect on training) ----------------------------------------------------
+num_workers: 6
+resume: auto
+save_every: 200
+keep_ckpts: 2        # last two resume points (2026/10/01: 36 GB each -- 12.9 GB of
+                     # weights plus 25.8 GB of AdamW moments; three concurrent runs at two
+                     # each plus a 36 GB .tmp during saves is ~252 GB, which is why the
+                     # finished runs' finals were stripped to model-only)
+log_every: 20
+wandb_project:              # set a W&B project name to log the run
+wandb_entity:
+wandb_run_name: M_climbmixbidir0930_mntpprompt
+wandb_group:
+wandb_tags: [rlhn250k, nanochat-4b-climbmix-bidir-0930, pointwise, lce, bidirectional, mntp-prompt]

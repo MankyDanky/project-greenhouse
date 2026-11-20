@@ -1,0 +1,78 @@
+diff --git a/scripts/base_train.py b/scripts/base_train.py
+index d1af271..00d6478 100644
+--- a/scripts/base_train.py
++++ b/scripts/base_train.py
+@@ -75,6 +75,8 @@ parser.add_argument("--core-metric-every", type=int, default=2000, help="evaluat
+ parser.add_argument("--core-metric-max-per-task", type=int, default=500, help="examples per task for CORE metric")
+ parser.add_argument("--sample-every", type=int, default=2000, help="sample from model every N steps (-1 = disable)")
+ parser.add_argument("--save-every", type=int, default=-1, help="save checkpoints every N steps (-1 = only at end)")
++parser.add_argument("--deadline-margin-s", type=int, default=900, help="(d34cm) save a checkpoint and exit this many seconds before SLURM_JOB_END_TIME (<=0 disables)")
++parser.add_argument("--stop-at-step", type=int, default=-1, help="(d34cm) batch-ramp stage boundary: save a checkpoint at this global step and exit 0 (-1 disables)")
+ # Output
+ parser.add_argument("--model-tag", type=str, default=None, help="override model tag for checkpoint directory name")
+ args = parser.parse_args()
+@@ -316,8 +318,16 @@ optimizer = model.setup_optimizer(
+ )
+ 
+ if resuming:
++    # (d34cm) load_state_dict overwrites the param-group hyperparameters (lr, initial_lr, ...) with the checkpoint's values,
++    # which silently keeps the OLD learning rates when a resume changes --total-batch-size (our batch ramp). Re-apply this
++    # run's freshly computed LRs after loading, the same way chat_sft.py does. Momentum buffers etc. are kept as loaded.
++    fresh_lrs = [group["lr"] for group in optimizer.param_groups]
+     optimizer.load_state_dict(optimizer_data)
+     del optimizer_data
++    for group, lr in zip(optimizer.param_groups, fresh_lrs):
++        group["lr"] = lr
++        group["initial_lr"] = lr
++    print0(f"Resume: re-applied this run's learning rates after loading the optimizer state (matrix lr {args.matrix_lr * batch_lr_scale:.6f})")
+ 
+ # -----------------------------------------------------------------------------
+ # GradScaler for fp16 training (bf16/fp32 don't need it — bf16 has the same exponent range as fp32)
+@@ -498,6 +508,47 @@ while True:
+             rank=ddp_rank,
+         )
+ 
++    # (d34cm) graceful stop before the Slurm wall-time limit OR at a batch-ramp stage boundary (--stop-at-step):
++    # rank 0 decides, all ranks follow; save a checkpoint at this step (unless one was just written) and exit 0 so
++    # the next job in the chain resumes here (possibly with a different --total-batch-size). Training math is untouched.
++    if (args.deadline_margin_s > 0 or args.stop_at_step > 0) and not last_step:
++        stop_flag = torch.zeros(1, device=device)
++        if master_process:
++            _end_time = os.environ.get("SLURM_JOB_END_TIME")
++            if args.deadline_margin_s > 0 and _end_time is not None and time.time() > float(_end_time) - args.deadline_margin_s:
++                stop_flag.fill_(1.0)
++            if args.stop_at_step > 0 and step >= args.stop_at_step:
++                stop_flag.fill_(2.0)
++        if is_ddp_initialized():
++            dist.broadcast(stop_flag, src=0)
++        if stop_flag.item() >= 1.0:
++            saved_this_step = step > 0 and step != args.resume_from_step and args.save_every > 0 and step % args.save_every == 0
++            if not saved_this_step:
++                save_checkpoint(
++                    checkpoint_dir,
++                    step,
++                    orig_model.state_dict(),
++                    optimizer.state_dict(),
++                    {
++                        "step": step,
++                        "val_bpb": val_bpb,
++                        "model_config": model_config_kwargs,
++                        "user_config": user_config,
++                        "device_batch_size": args.device_batch_size,
++                        "max_seq_len": args.max_seq_len,
++                        "total_batch_size": total_batch_size,
++                        "dataloader_state_dict": dataloader_state_dict,
++                        "loop_state": {
++                            "min_val_bpb": min_val_bpb,
++                            "smooth_train_loss": smooth_train_loss,
++                            "total_training_time": total_training_time,
++                        },
++                    },
++                    rank=ddp_rank,
++                )
++            print0(f"{'STAGE STOP' if stop_flag.item() == 2.0 else 'DEADLINE STOP'}: checkpoint at step {step} saved; exiting for the next job in the chain")
++            break
++
+     # termination conditions (TODO: possibly also add loss explosions etc.)
+     if last_step:
+         break

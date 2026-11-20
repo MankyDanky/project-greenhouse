@@ -1,0 +1,41 @@
+{
+ "steps": 1931,
+ "groups": 247452,
+ "pairs": 4954608,
+ "sha256": "04c557c35b37662326d3d96873aa13c7137cab4b614d5f9ebe7ecb272e86977e",
+ "milestones": [
+  {
+   "step": 391,
+   "groups": 50045,
+   "target": 50000
+  },
+  {
+   "step": 781,
+   "groups": 100007,
+   "target": 100000
+  },
+  {
+   "step": 1171,
+   "groups": 150016,
+   "target": 150000
+  },
+  {
+   "step": 1561,
+   "groups": 200033,
+   "target": 200000
+  },
+  {
+   "step": 1931,
+   "groups": 247452,
+   "target": "final"
+  }
+ ],
+ "total_steps": 1931,
+ "export_steps": [
+  391,
+  781,
+  1171,
+  1561,
+  1931
+ ]
+}

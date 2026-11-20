@@ -1,0 +1,26 @@
+{
+ "rlhn250k_prepared": {
+  "sha256": "e8000f38a3f4b5393d987f8808c1c17f8aecb253b88081a9e525ab82350fd1c4",
+  "bytes": 4808019294
+ },
+ "rlhn250k_prepared_nanochat_lens": {
+  "sha256": "440c79c563a12e85c56fa3beb70332a9232dcfb4a6d08bc1a036a8c63a0eaafb",
+  "bytes": 2685829267
+ },
+ "rlhn250k_teacher": {
+  "sha256": "17a387e519a23a4e0fdb1207cd91618b6d383bb8bf8c59ae2e35aa1a601ed76c",
+  "bytes": 2616586799
+ },
+ "rlhn250k_teacher_nanochat_lens": {
+  "sha256": "171ca0c68e8f97903fdb1cc69cd6a7095089939b8844604486609a96f9cc4459",
+  "bytes": 2616268617
+ },
+ "rlhn_prepared": {
+  "sha256": "be870784ab9a58edd03eca575d477f91449925ee3b5a73b822288c1f13132f80",
+  "bytes": 10288799506
+ },
+ "rlhn_prepared_nanochat_lens": {
+  "sha256": "34be32f4d8a42978c77075af9d4f9fcd52def785bff6dfeb8e99493bd1401f86",
+  "bytes": 5722450440
+ }
+}

@@ -1,0 +1,23 @@
+{
+  "model": "nanochat:gaggle-nanochat-pretrained-climbmix-20260924@227158",
+  "task": "mmlu",
+  "max_len": 2048,
+  "mmlu": 0.49266486255519154,
+  "acc": 0.49266486255519154,
+  "groups": {
+    "mmlu_humanities": 0.4199787460148778,
+    "mmlu_social_sciences": 0.5661358466038349,
+    "mmlu_stem": 0.4538534728829686,
+    "mmlu_other": 0.5693595107821049
+  },
+  "stats": {
+    "requests": 56168,
+    "forwards": 14015,
+    "truncated": 1516
+  },
+  "seconds": 336.3948667049408,
+  "mntp_mask_id": -1,
+  "prefix_token": 32759,
+  "lm_eval": "0.4.9",
+  "torch": "2.9.1+cu128"
+}

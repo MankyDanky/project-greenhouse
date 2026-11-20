@@ -1,0 +1,61 @@
+_signature:
+  backbone: nanochat
+  global_batch_groups: 128
+  k_choices: &id001
+  - 7
+  - 15
+  - 23
+  length_rule: caps
+  lr: 5.0e-05
+  max_doc_len: 512
+  max_groups: 32
+  max_query_len: 128
+  max_tokens_per_batch: 39312
+  model_name: nanochat-4b-climbmix-0924
+  pack_world: 2
+  packing_scaffold: 14
+  plan_sha256: 04c557c35b37662326d3d96873aa13c7137cab4b614d5f9ebe7ecb272e86977e
+  seed: 17
+  seq_budget: null
+  stop_at_groups: null
+  world: 2
+answer_ids:
+- 2737
+- 7863
+attn_implementation: sdpa
+backbone: nanochat
+backbone_impl: upstream
+builder: greenhouse
+clip: 12.0
+epochs: 1
+exec_chunk_tokens: 16384
+exec_mode: gradcache
+expected_plan_sha256: 04c557c35b37662326d3d96873aa13c7137cab4b614d5f9ebe7ecb272e86977e
+global_batch_groups: 128
+grad_checkpointing: true
+k_choices: *id001
+keep_resume: 2
+length_rule: caps
+log_every: 20
+lr: 5.0e-05
+max_doc_len: 512
+max_groups: 32
+max_query_len: 128
+max_tokens_per_batch: 39312
+milestone_every: 50000
+model_name: models/nanochat-4b-climbmix-0924
+nanochat_src: third_party/nanochat-92d63d4
+num_workers: 6
+optimizer_state_sharding: false
+output_dir: runs/R0_G_repro
+pack_world: 2
+packing_scaffold: 14
+precision: tf32
+prompt: nochat
+resume: auto
+save_every: 100
+seed: 17
+tau: 1.0
+train_parquet: data/rlhn250k_prepared_climbmix_lens/train.parquet
+warmup_steps: 150
+weight_decay: 0.01

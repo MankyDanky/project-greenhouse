@@ -1,0 +1,73 @@
+# Paper: Sec. 6.3, causal mean pooling.
+# Expected mean nDCG@10 (BM25 top-100): TREC DL 0.642, BEIR 0.543.
+# Original run: P; 2x H200 NVL, 60,000-token budget.
+# Engine: nanochat.  Train: bash launch/train.sh configs/attention/causal_meanpool.yaml <n_gpus>   (from reranker/)
+#
+# G. RLHN-250K, LCE — run A's recipe on the FINAL ClimbMix checkpoint (2026/09/25)
+# Differences from A (configs/backbones/nanochat_d34_lr5e-5.yaml), all forced by the backbone:
+#   * backbone: castorini/gaggle-nanochat-pretrained-climbmix-20260924 (step 227,158; the completed run's best-CORE checkpoint: CORE 0.4597, val bpb 0.5958, vs 0.4353 / 0.6160 for the 09/22 interim one), an UPSTREAM nanochat checkpoint
+#     (karpathy/nanochat @ 92d63d4): 3.22B parameters, 32,768-token vocabulary, value embeddings,
+#     embedding smearing, per-layer resid/x0 mixing, a mid-layer backout and sliding-window
+#     attention (SSSL). The HF NanoChat port cannot represent any of that, so the run uses
+#     upstream's own GPT class through src/modeling_nanochat_upstream.py (verified against
+#     upstream's forward to 3.8e-6 on the two answer logits).
+#   * answer tokens are the 32k tokenizer's: ' true' = 2737, ' false' = 7863 (A: 2674 / 6812).
+#   * data lengths re-measured with that tokenizer, so the step packing differs from A's.
+# Everything else is A: same data rows, LCE at tau = 1, 512/128 truncation, 128-group global batch,
+# AdamW 5e-5 with 150 warmup steps and cosine decay, fp32 with TF32 matmuls, seed 17.
+
+# ---- model, prompt, data -----------------------------------------------------------------
+backbone_impl: upstream     # use src/modeling_nanochat_upstream.py (not the HF NanoChat port)
+model_name: models/gaggle-nanochat-pretrained-climbmix-20260924   # upstream checkpoint dir: model_227158.pt + meta_227158.json + tokenizer.json
+nanochat_src: third_party/nanochat-92d63d4   # nanochat checkout @ 92d63d4 (NANOCHAT_DTYPE=float32)
+score_mode: meanpool_lmrows # pooled readout, same two LM rows (see O). P vs the seed runs
+                            # S18/S19 isolates pooling on the CAUSAL backbone; P vs O
+                            # isolates the backbone at a pooled readout, both on H200.
+prompt: nochat              # "<|bos|>Query: {query}\nPassage: {passage}\nRelevant:"  score = logit(" true") - logit(" false")
+train_parquet: data/rlhn250k_prepared_climbmix_lens/train.parquet   # RLHN-250K, lengths from the 32k tokenizer
+output_dir: checkpoints/attention_causal_meanpool
+max_doc_len: 512
+max_query_len: 128
+
+# ---- model setup ----------------------------------------------------------------------------
+lora: false                 # full fine-tuning of all 3.22B parameters
+attn_implementation: sdpa   # upstream picks its SDPA path automatically in fp32 (its FA3 kernels are bf16-only)
+precision: tf32             # fp32 weights, activations and optimizer state; TF32 matmuls; no autocast
+grad_checkpointing: true
+
+# ---- loss --------------------------------------------------------------------------------
+tau: 1.0                    # LCE only
+w_rkd: 0.0                  # no rank distillation (this data has no teacher ranks)
+
+# ---- batching ---------------------------------------------------------------------------
+k_choices: [7, 15, 23]
+global_batch_groups: 128    # groups per optimizer step, independent of GPU count and memory
+max_groups: 32
+max_tokens_per_batch: 60000   # PINNED: the per-GPU budget this row ran with on 2x H200 NVL (141 GB). It decides which
+                              # query groups share an optimizer step, i.e. the training plan itself.
+pack_world: 2                 # pack as on the paper's 2 GPUs, whatever the GPU count here
+require_exact_budget: true    # stop instead of silently repacking on a GPU that cannot afford it
+                              # gradients and AdamW state leave ~80 GiB on a 141 GB H200)
+mem_per_1k_tok_gib: 1.0
+# no pack_world / require_exact_budget: this is a new run, not a reproduction, so the trainer
+# sizes the budget from the GPU it lands on.
+
+# ---- optimization ------------------------------------------------------------------------
+seed: 17
+epochs: 1
+lr: 5.0e-5
+weight_decay: 0.01
+warmup_steps: 150
+clip: 12.0
+
+# ---- bookkeeping (no effect on training) ----------------------------------------------------
+num_workers: 6
+resume: auto
+save_every: 200
+keep_ckpts: 2
+log_every: 20
+wandb_project:              # set a W&B project name to log the run
+wandb_entity:
+wandb_run_name: P_climbmix0924_meanpool
+wandb_group:
+wandb_tags: [rlhn250k, nanochat-4b-climbmix-0924, pointwise, lce]

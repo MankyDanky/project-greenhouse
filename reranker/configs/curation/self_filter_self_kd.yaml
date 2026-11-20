@@ -1,0 +1,101 @@
+# Paper: Sec. 6.4, LCE + self-filtering + self-distillation (tau_KD = 2).
+# Expected mean nDCG@10 (BM25 top-100): TREC DL 0.640, BEIR 0.547.
+# Original run: J2; 2x RTX PRO 6000 Blackwell, 1,918 updates.
+# Engine: nanochat.  Train: bash launch/train.sh configs/curation/self_filter_self_kd.yaml <n_gpus>   (from reranker/)
+#
+# J2. RLHN-250K SELF-FILTERED + SCORE DISTILLATION from run G, MATCHED TEMPERATURES (2026/09/30)
+# = configs/J_climbmix0924_selfkd.yaml with ONE change: the KD term's student temperature is raised
+#   from 1.0 to 2.0 so it equals tau_teacher.
+#
+# Why J had to be redone. kd_loss minimises KL(softmax(t/tau_t) || softmax(s/tau_s)), whose optimum is
+#   s = (tau_s / tau_t) * t + c.
+# J ran tau_s = tau = 1.0 against tau_t = 2.0, so its KD term did not ask the student to reproduce the
+# teacher's ordering at the teacher's scale -- it asked for HALF the teacher's score spread. Verified
+# numerically (losses_nc.total_loss docstring) and visible in the run: over its last 200 steps J sat at
+# pos_score 11.61 / neg_score 4.57 against I's 24.38 / 15.19, with sep_mean 7.04 vs 9.19, while accuracy
+# was unchanged (0.7795 vs 0.7765). nDCG is invariant to a monotone rescaling, which is why J scored
+# like I (DL 0.6413 vs 0.6408, BEIR 0.5461 vs 0.5475) -- so J is a WEAK test of score distillation, not
+# a clean null. J2 is the clean test.
+#
+# Everything else -- data, filter, w_kd, subset weights, backbone, batch, optimiser, seed -- is J's.
+# = configs/curation/self_filter.yaml + KL distillation on G's SCORES (not its order):
+#   * data: RLHN-250K filtered by run G itself (data_prep/self_filter.py), same rule as the Gemma filter:
+#     drop a positive when > max(9, 0.375*n_neg) negatives outrank it, ArguAna exempt. G's filter is
+#     milder than Gemma's: 14,887 positives (2.6%) and 1,484 rows dropped, vs 29,439 (5.1%) and 6,770;
+#     only 37.5% of its drops are ones Gemma also dropped. 246,050 rows remain.
+#   * loss: still LCE only. The parquet carries G's own ranks, so rkd/rkd_agree are logged (agreement
+#     with its own earlier ordering) but never enter the loss -- w_rkd stays 0.
+# Differences from A (configs/backbones/nanochat_d34_lr5e-5.yaml), all forced by the backbone:
+#   * backbone: castorini/gaggle-nanochat-pretrained-climbmix-20260924 (step 227,158; the completed run's best-CORE checkpoint: CORE 0.4597, val bpb 0.5958, vs 0.4353 / 0.6160 for the 09/22 interim one), an UPSTREAM nanochat checkpoint
+#     (karpathy/nanochat @ 92d63d4): 3.22B parameters, 32,768-token vocabulary, value embeddings,
+#     embedding smearing, per-layer resid/x0 mixing, a mid-layer backout and sliding-window
+#     attention (SSSL). The HF NanoChat port cannot represent any of that, so the run uses
+#     upstream's own GPT class through src/modeling_nanochat_upstream.py (verified against
+#     upstream's forward to 3.8e-6 on the two answer logits).
+#   * answer tokens are the 32k tokenizer's: ' true' = 2737, ' false' = 7863 (A: 2674 / 6812).
+#   * data lengths re-measured with that tokenizer, so the step packing differs from A's.
+# Everything else is A: same data rows, LCE at tau = 1, 512/128 truncation, 128-group global batch,
+# AdamW 5e-5 with 150 warmup steps and cosine decay, fp32 with TF32 matmuls, seed 17.
+# ---- model, prompt, data -----------------------------------------------------------------
+backbone_impl: upstream     # use src/modeling_nanochat_upstream.py (not the HF NanoChat port)
+model_name: models/gaggle-nanochat-pretrained-climbmix-20260924   # upstream checkpoint dir: model_227158.pt + meta_227158.json + tokenizer.json
+nanochat_src: third_party/nanochat-92d63d4   # nanochat checkout @ 92d63d4 (NANOCHAT_DTYPE=float32)
+prompt: nochat              # "<|bos|>Query: {query}\nPassage: {passage}\nRelevant:"  score = logit(" true") - logit(" false")
+train_parquet: data/rlhn250k_self_filtered_scores/train.parquet   # same rows as I, plus G's raw scores (pos_teacher/neg_teacher)
+output_dir: checkpoints/curation_self_filter_self_kd
+max_doc_len: 512
+max_query_len: 128
+# ---- model setup ----------------------------------------------------------------------------
+lora: false                 # full fine-tuning of all 3.22B parameters
+attn_implementation: sdpa   # upstream picks its SDPA path automatically in fp32 (its FA3 kernels are bf16-only)
+precision: tf32             # fp32 weights, activations and optimizer state; TF32 matmuls; no autocast
+grad_checkpointing: true
+# ---- loss --------------------------------------------------------------------------------
+tau: 1.0                    # LCE only
+# --- KL score distillation from run G (losses_nc.kd_loss) ---
+# Gemma is listwise and could only give an ORDER, hence rank distillation. A pointwise judge gives
+# magnitudes too, so this matches the student's score distribution to the teacher's instead.
+# KL is over the NEGATIVES only (positive excluded and the rest renormalised), so LCE keeps
+# positive-vs-rest and KD owns how the negatives are spread.
+w_kd: 0.3                   # LCE stays at weight 1
+tau_student_kd: 2.0         # <-- THE CHANGE (J left this at tau = 1.0). Student temperature for the KD
+                            # term ONLY; LCE keeps tau = 1.0 below, so the ranking loss is untouched.
+                            # With tau_s = tau_t the KL is shift-invariant and minimised at s = t + c.
+tau_teacher: 2.0            # measured on G's scores: within-row std 2.81, spread 11.1; normalised entropy
+                            # of softmax(scores/tau) over the negatives is 0.55 at tau=1, 0.79 at 2,
+                            # 0.93 at 4 -- tau=2 keeps the teacher informative without flattening it
+kd_subset_weights: {arguana: 0.0}   # counter-argument retrieval: a relevance teacher is inverted there
+w_rkd: 0.0                  # order distillation stays OFF (an LCE student already reproduces G's order
+                            # at rkd_agree 0.972, so there is nothing left to teach there)
+rkd_subset_weights: {arguana: 0.0}   # counter-argument retrieval: a relevance teacher is inverted there
+# ---- batching ---------------------------------------------------------------------------
+k_choices: [7, 15, 23]
+global_batch_groups: 128    # groups per optimizer step, independent of GPU count and memory
+max_groups: 32
+max_tokens_per_batch: 39312   # PINNED: the per-GPU budget this row ran with on 2x RTX PRO 6000 Blackwell (96 GB). It decides which
+                              # query groups share an optimizer step, i.e. the training plan itself.
+pack_world: 2                 # pack as on the paper's 2 GPUs, whatever the GPU count here
+require_exact_budget: true    # stop instead of silently repacking on a GPU that cannot afford it
+                              # gradients and AdamW state leave ~80 GiB on a 141 GB H200)
+mem_per_1k_tok_gib: 1.0
+# no pack_world / require_exact_budget: this is a new run, not a reproduction, so the trainer
+# sizes the budget from the GPU it lands on.
+# ---- optimization ------------------------------------------------------------------------
+seed: 17
+epochs: 1
+lr: 5.0e-5
+weight_decay: 0.01
+warmup_steps: 150
+clip: 12.0
+# ---- bookkeeping (no effect on training) ----------------------------------------------------
+num_workers: 6
+resume: auto
+save_every: 200
+keep_ckpts: 2        # last two resume points (36 GB each; standing policy since the 10/01
+                     # out-of-disk incident that killed three runs mid-flight)
+log_every: 20
+wandb_project:              # set a W&B project name to log the run
+wandb_entity:
+wandb_run_name: J2_climbmix0924_selfkd_tau2
+wandb_group:
+wandb_tags: [rlhn250k, nanochat-4b-climbmix-0924, pointwise, lce]

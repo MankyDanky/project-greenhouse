@@ -1,0 +1,169 @@
+{
+  "model": "Gensyn/open-1b-base",
+  "core_metric": 0.23921652999471493,
+  "results": {
+    "hellaswag_zeroshot": 0.462,
+    "jeopardy": 0.184,
+    "bigbench_qa_wikidata": 0.568,
+    "arc_easy": 0.66,
+    "arc_challenge": 0.3,
+    "copa": 0.65,
+    "commonsense_qa": 0.254,
+    "piqa": 0.726,
+    "openbook_qa": 0.33,
+    "lambada_openai": 0.558,
+    "hellaswag": 0.47,
+    "winograd": 0.706959706959707,
+    "winogrande": 0.538,
+    "bigbench_dyck_languages": 0.184,
+    "agi_eval_lsat_ar": 0.23478260869565218,
+    "bigbench_cs_algorithms": 0.468,
+    "bigbench_operators": 0.1523809523809524,
+    "bigbench_repeat_copy_logic": 0.0,
+    "squad": 0.266,
+    "coqa": 0.22,
+    "boolq": 0.562,
+    "bigbench_language_identification": 0.242
+  },
+  "centered_results": {
+    "hellaswag_zeroshot": 0.2826666666666667,
+    "jeopardy": 0.184,
+    "bigbench_qa_wikidata": 0.568,
+    "arc_easy": 0.5466666666666667,
+    "arc_challenge": 0.06666666666666665,
+    "copa": 0.30000000000000004,
+    "commonsense_qa": 0.06749999999999999,
+    "piqa": 0.45199999999999996,
+    "openbook_qa": 0.10666666666666669,
+    "lambada_openai": 0.558,
+    "hellaswag": 0.2933333333333333,
+    "winograd": 0.413919413919414,
+    "winogrande": 0.07600000000000007,
+    "bigbench_dyck_languages": 0.184,
+    "agi_eval_lsat_ar": 0.04347826086956521,
+    "bigbench_cs_algorithms": 0.468,
+    "bigbench_operators": 0.1523809523809524,
+    "bigbench_repeat_copy_logic": 0.0,
+    "squad": 0.266,
+    "coqa": 0.22,
+    "boolq": -0.15263157894736826,
+    "bigbench_language_identification": 0.16611661166116612
+  },
+  "info": {
+    "hellaswag_zeroshot": {
+      "n": 500,
+      "truncated": 0,
+      "seconds": 16.4
+    },
+    "jeopardy": {
+      "n": 500,
+      "truncated": 0,
+      "seconds": 10.7
+    },
+    "bigbench_qa_wikidata": {
+      "n": 500,
+      "truncated": 0,
+      "seconds": 4.7
+    },
+    "arc_easy": {
+      "n": 500,
+      "truncated": 0,
+      "seconds": 46.6
+    },
+    "arc_challenge": {
+      "n": 500,
+      "truncated": 0,
+      "seconds": 54.3
+    },
+    "copa": {
+      "n": 100,
+      "truncated": 0,
+      "seconds": 0.5
+    },
+    "commonsense_qa": {
+      "n": 500,
+      "truncated": 0,
+      "seconds": 61.4
+    },
+    "piqa": {
+      "n": 500,
+      "truncated": 0,
+      "seconds": 26.5
+    },
+    "openbook_qa": {
+      "n": 500,
+      "truncated": 0,
+      "seconds": 3.9
+    },
+    "lambada_openai": {
+      "n": 500,
+      "truncated": 0,
+      "seconds": 3.7
+    },
+    "hellaswag": {
+      "n": 500,
+      "truncated": 0,
+      "seconds": 116.0
+    },
+    "winograd": {
+      "n": 273,
+      "truncated": 0,
+      "seconds": 1.8
+    },
+    "winogrande": {
+      "n": 500,
+      "truncated": 0,
+      "seconds": 2.3
+    },
+    "bigbench_dyck_languages": {
+      "n": 500,
+      "truncated": 0,
+      "seconds": 19.6
+    },
+    "agi_eval_lsat_ar": {
+      "n": 230,
+      "truncated": 0,
+      "seconds": 49.8
+    },
+    "bigbench_cs_algorithms": {
+      "n": 500,
+      "truncated": 0,
+      "seconds": 14.7
+    },
+    "bigbench_operators": {
+      "n": 210,
+      "truncated": 0,
+      "seconds": 5.9
+    },
+    "bigbench_repeat_copy_logic": {
+      "n": 32,
+      "truncated": 0,
+      "seconds": 1.2
+    },
+    "squad": {
+      "n": 500,
+      "truncated": 174,
+      "seconds": 63.5
+    },
+    "coqa": {
+      "n": 500,
+      "truncated": 0,
+      "seconds": 17.9
+    },
+    "boolq": {
+      "n": 500,
+      "truncated": 21,
+      "seconds": 100.1
+    },
+    "bigbench_language_identification": {
+      "n": 500,
+      "truncated": 15,
+      "seconds": 179.0
+    }
+  },
+  "max_per_task": 500,
+  "max_seq_len": 2048,
+  "batched": true,
+  "torch": "2.14.0+cu130",
+  "seconds": 865.2146697044373
+}

@@ -1,0 +1,18 @@
+{
+  "model": "nanochat:gaggle-nanochat-pretrained-climbmix-bidirectional-20260929@229067",
+  "task": "leaderboard_mmlu_pro",
+  "max_len": 2048,
+  "mmlu": 0.1870844414893617,
+  "acc": 0.1870844414893617,
+  "groups": {},
+  "stats": {
+    "requests": 113990,
+    "forwards": 12032,
+    "truncated": 10
+  },
+  "seconds": 243.42786049842834,
+  "mntp_mask_id": 32767,
+  "prefix_token": 32759,
+  "lm_eval": "0.4.9",
+  "torch": "2.9.1+cu128"
+}

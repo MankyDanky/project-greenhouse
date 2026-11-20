@@ -1,0 +1,50 @@
+# Paper: Sec. 6.5, pointwise CE.
+# Expected mean nDCG@10 (BM25 top-100): TREC DL 0.628, BEIR 0.528.
+# Original run: CE (Nour Jedidi); 2x RTX PRO 6000 Blackwell, 8 pairs per GPU microbatch, 1,931 updates.
+# Engine: ce.  Train: bash launch/train.sh configs/loss/pointwise_ce.yaml <n_gpus>   (from reranker/)
+#
+# CE baseline matched to nanochat_lce/configs/sft/run1_seed17.yaml.
+model_name: castorini/gaggle-nanochat-pretrained-climbmix-20260924
+model_revision: 0b344cddcdd9733e1b98aed7fd11af24c55fa379
+backbone_impl: upstream
+nanochat_src: third_party/nanochat-92d63d4   # pristine karpathy/nanochat @ 92d63d4
+prompt: nochat
+train_parquet: data/rlhn250k_prepared_climbmix_lens/train.parquet   # sha256 c3743e83..., the file runs 1-4 used
+output_dir: checkpoints/loss_pointwise_ce
+max_doc_len: 512
+max_query_len: 128
+
+# Original full causal LM, including its original full-vocabulary LM head.
+lora: false
+lora_r: 32
+lora_alpha: 64
+lora_targets: [c_q, c_k, c_v, c_proj, c_fc]  # native attention/MLP names
+attn_implementation: sdpa
+precision: tf32
+grad_checkpointing: true
+
+# Match the exact recorded G LCE plan, regardless of the GPUs used for CE.
+k_choices: [7, 15, 23]
+global_batch_groups: 128
+max_groups: 32
+reference_world_size: 2
+reference_tokens_per_batch: 39312
+expected_steps_per_epoch: 1931
+per_device_batch_size: 2
+
+seed: 17
+epochs: 1
+lr: 5.0e-5
+weight_decay: 0.01
+warmup_steps: 150
+clip: 12.0
+
+num_workers: 6
+resume: auto
+save_every: 200
+keep_ckpts: 1
+log_every: 20
+wandb_project:              # set a W&B project name to log the run
+wandb_entity:
+wandb_run_name: G_climbmix0924_rlhn250k_ce_grouped
+save_first_step: true

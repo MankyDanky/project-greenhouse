@@ -1,0 +1,42 @@
+# Paper: Sec. 5, baseline run 3.
+# Expected mean nDCG@10 (BM25 top-100): TREC DL 0.641, BEIR 0.545.
+# Original run: G reproduction (Nour Jedidi); 2x RTX PRO 6000 Blackwell, 1,931 updates, exact 39,312-token budget.
+# Engine: nanochat.  Train: bash launch/train.sh configs/sft/run3_seed17_exact_budget.yaml <n_gpus>   (from reranker/)
+#
+# Values are Nour Jedidi's launch config for this run, verbatim except for paths.
+backbone_impl: upstream
+model_name: models/gaggle-nanochat-pretrained-climbmix-20260924
+nanochat_src: third_party/nanochat-92d63d4
+prompt: nochat
+train_parquet: data/rlhn250k_prepared_climbmix_lens/train.parquet
+output_dir: checkpoints/sft_run3_seed17_exact_budget
+max_doc_len: 512
+max_query_len: 128
+lora: false
+attn_implementation: sdpa
+precision: tf32
+grad_checkpointing: true
+tau: 1.0
+w_rkd: 0.0
+k_choices:
+- 7
+- 15
+- 23
+global_batch_groups: 128
+max_groups: 32
+max_tokens_per_batch: 39312
+require_exact_budget: true
+mem_per_1k_tok_gib: 1.0
+seed: 17
+epochs: 1
+lr: 5.0e-05
+weight_decay: 0.01
+warmup_steps: 150
+clip: 12
+num_workers: 6
+resume: auto
+save_every: 50
+keep_ckpts: 2
+log_every: 1
+wandb_project:              # set a W&B project name to log the run
+wandb_run_name: null
