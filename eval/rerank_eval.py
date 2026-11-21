@@ -188,12 +188,18 @@ def load_ours_pointwise(ckpt, dev, dtype, sd):
     # another cluster under an absolute path). Resolve to the same backbone here: an explicit
     # EVAL_BACKBONE_DIR wins, else models/<basename> in the recipe, which is a symlink to the
     # shared copy. Falling through unchanged lets the loader raise with the original name.
+    def _from_reranker(path):
+        p = os.path.normpath(os.path.join(HERE, "..", "reranker", str(path)))
+        return p if not os.path.isabs(str(path)) and os.path.exists(p) else None
+
     def _resolve_backbone(path):
         override = os.environ.get("EVAL_BACKBONE_DIR")
         if override:
             return override
         if os.path.exists(path):
             return path
+        if _from_reranker(path):                         # a path relative to reranker/, where training runs
+            return _from_reranker(path)
         local = os.path.normpath(os.path.join(HERE, "..", "reranker", "models", os.path.basename(str(path).rstrip("/"))))
         if os.path.exists(local):
             print(f"backbone {path} is absent here; using {local}", flush=True)
@@ -202,6 +208,8 @@ def load_ours_pointwise(ckpt, dev, dtype, sd):
     cfg["model_name"] = _resolve_backbone(cfg["model_name"])
     if os.environ.get("EVAL_NANOCHAT_SRC"):             # an explicit nanochat checkout wins
         cfg["nanochat_src"] = os.environ["EVAL_NANOCHAT_SRC"]
+    elif cfg.get("nanochat_src") and not os.path.exists(cfg["nanochat_src"]) and _from_reranker(cfg["nanochat_src"]):
+        cfg["nanochat_src"] = _from_reranker(cfg["nanochat_src"])   # relative to reranker/, where training runs
     elif cfg.get("nanochat_src") and not os.path.exists(cfg["nanochat_src"]):
         fallback = os.path.join(HERE, "..", "reranker", "third_party", "nanochat-92d63d4")
         print(f"nanochat_src {cfg['nanochat_src']} is absent here; using {fallback}", flush=True)
@@ -216,7 +224,7 @@ def load_ours_pointwise(ckpt, dev, dtype, sd):
     if cfg.get("backbone_impl", "hf") == "upstream":     # upstream nanochat checkpoint (see modeling_nanochat_upstream)
         from modeling_nanochat_upstream import UpstreamNanochatReranker
         m = UpstreamNanochatReranker(cfg["model_name"], yes_id=yes_id, no_id=no_id,
-                                     dtype=dtype, nanochat_src=cfg.get("nanochat_src"),
+                                     dtype=dtype, nanochat_src=cfg.get("nanochat_src"), step=cfg.get("model_step"),
                                      bidirectional=cfg.get("bidirectional", False),
                                      readout_offset=readout_offset(prompt),
                                      score_mode=cfg.get("score_mode", "lm_rows"))

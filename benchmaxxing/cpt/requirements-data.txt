@@ -1,0 +1,8 @@
+# Data preparation (prepare_data.py). Robust04 and TREC-News are read through pyserini, which also needs Java 21.
+pyyaml
+numpy
+pyarrow
+tokenizers
+huggingface_hub
+ir_datasets
+pyserini==1.5.0     # the version prepare_data.py is tested with

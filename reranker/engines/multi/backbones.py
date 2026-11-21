@@ -112,7 +112,8 @@ def build_model(cfg, yes_id, no_id, dtype, meta=False):
         assert not meta
         from modeling_nanochat_upstream import UpstreamNanochatReranker
         return UpstreamNanochatReranker(cfg["model_name"], yes_id=yes_id, no_id=no_id, dtype=dtype,
-                                        nanochat_src=cfg.get("nanochat_src") or str(NANOCHAT_SRC))
+                                        nanochat_src=cfg.get("nanochat_src") or str(NANOCHAT_SRC),
+                                        step=cfg.get("model_step"))
     return HFReranker(cfg["model_name"], cfg["backbone"], yes_id, no_id, dtype=dtype,
                       attn_implementation=cfg.get("attn_implementation", "sdpa"),
                       experts_implementation=cfg.get("experts_implementation"), meta=meta)

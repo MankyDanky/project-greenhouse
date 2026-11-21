@@ -1,0 +1,29 @@
+# CPU smoke test of the trainer's config path (tests/smoke.sh): a 2-layer model, not a recipe.
+init-from-dir: work/smoke/base/base_checkpoints/smoke_init
+init-from-step: 3
+data-dir: work/smoke/data/train
+model-tag: smoke_cpt
+auto-resume: true
+depth: 2
+aspect-ratio: 64
+head-dim: 64
+window-pattern: SL
+max-seq-len: 256
+total-batch-size: 1024
+device-batch-size: 2
+num-iterations: 20                     # the test overrides it on the command line (--num-iterations 10)
+literal-hparams: true
+matrix-lr: 0.002
+embedding-lr: 0.03
+unembedding-lr: 0.0008
+scalar-lr: 0.05
+warmup-steps: 1
+warmdown-ratio: 0.5
+final-lr-frac: 0.0
+weight-decay: 0.021764
+eval-every: 5
+eval-tokens: 1024
+core-metric-every: -1
+sample-every: -1
+save-every: 5
+keep-checkpoints: 2

@@ -61,11 +61,13 @@ print(model.compute_score([("what is a greenhouse gas", "Carbon dioxide traps he
 |---|---|---|
 | [`pretrain/`](pretrain/) | Sec. 4 | ClimbMix pre-training of the d34 backbone, stage by stage (tokenizer, batch ramp, 2M-token production) |
 | [`pretrain/mntp/`](pretrain/mntp/) | Sec. 4 | the bidirectional MNTP continuation |
+| [`pretrain/continue/`](pretrain/continue/) | – | continued pre-training from a released checkpoint on another data mix (used by `benchmaxxing/`) |
 | [`pretrain_eval/`](pretrain_eval/) | Sec. 4 | CORE / MMLU / MMLU-Pro harness for the base-model comparison |
 | [`reranker/`](reranker/) | Sec. 5, 6 | supervised fine-tuning: one package, one config per paper row, data preparation, model soup, HF export |
 | [`eval/`](eval/) | Sec. 3, 5, 6 | BM25 candidates, the reranking evaluator, BM25 / oracle rows, the fine-tuned and listwise baselines |
 | [`diagnostics/`](diagnostics/) | Sec. 6.1, 6.3 | attention-blocking test of the MNTP rerankers, backbone weight scale |
 | [`paper/`](paper/) | all | `manifest.yaml` (every reproduced row, its config and its printed scores) and `check_results.py` |
+| [`benchmaxxing/`](benchmaxxing/) | – | after the paper: adapting Gaggle models to the evaluation collections, e.g. continued pretraining on their corpora ([plan](benchmaxxing/cpt/PLAN.md)) |
 | [`.claude/skills/`](.claude/skills/) | – | task guides for coding agents (reproduce a row, evaluate, prepare data, pre-train, build the soup) |
 
 ## Getting started

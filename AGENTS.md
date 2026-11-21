@@ -12,13 +12,21 @@ New work goes in alongside it, with its own configs and records; nothing may cha
 - `reranker/third_party/nanochat-92d63d4/`, `pretrain/nanochat/` and `pretrain/mntp/upstream_snapshot_bidir/` are
   pinned upstream snapshots. Do not edit them.
 
+## Benchmaxxing
+
+`benchmaxxing/` holds experiments that train on the evaluation corpora (never on their queries or judgements). Follow
+the rules in `benchmaxxing/README.md`. In short: label such models corpus-aware, not zero-shot; pick no checkpoint
+by test score; keep their results out of `paper/`. Only an experiment's data belongs there: training from a
+checkpoint uses `pretrain/continue/` (nanochat built by its `setup.sh`; change it through `nanochat_continue.patch`,
+not in `third_party/`), evaluation and reranking use the shared `reranker/` and `eval/`.
+
 ## Never commit
 
 - **Document text from Robust04 or TREC-News.** That means the candidate files (`retrieve_results_*_top100.jsonl`),
   listwise request files, model inputs or outputs that quote documents. They are licensed by NIST and may not be
   redistributed. Doc IDs, qrels, run files and scores are fine.
-- **Large artifacts:** anything under `reranker/{models,data,checkpoints}/`, `data/`, `eval/{qrels,runs,results}/`
-  or `exports/`.
+- **Large artifacts:** anything under `reranker/{models,data,checkpoints}/`, `data/`, `eval/{qrels,runs,results}/`,
+  `exports/`, `pretrain/continue/{third_party,work}/` or `benchmaxxing/cpt/{work,data}/`.
 - **Credentials:** tokens, keys, `.env` files.
 
 ## How to work

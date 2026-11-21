@@ -1,0 +1,65 @@
+# Gaggle reranker recipe for the 0.6B base model.
+# Engine: nanochat.  Run from reranker/:
+#   bash launch/train.sh configs/experiments/gaggle06b_lce.yaml 2
+# Any nanochat checkpoint dir of the same architecture works as the backbone (model_name), e.g. a continued-pretraining
+# run's dir, whose newest step is used unless model_step says otherwise:
+#   bash launch/train.sh configs/experiments/gaggle06b_lce.yaml 2 --override model_name=<run dir> \
+#     output_dir=checkpoints/<name> wandb_run_name=<name>
+#
+# THE 0.6B MODEL IS NOT RELEASED YET: model_name below is a placeholder until it is.
+#
+# This is the paper's run-1 recipe (configs/sft/run1_seed17.yaml) with two changes for a smaller backbone:
+#   * nanochat_src: the patched nanochat of pretrain/continue (bash pretrain/continue/setup.sh), which also loads
+#     models whose value embeddings are not on alternate layers (`ve_every` other than 2);
+#   * max_tokens_per_batch is a cap (120,000) instead of run 1's pinned 39,312: a smaller model leaves more memory for
+#     activations, so the trainer sizes each GPU's micro-batches to what fits. The optimisation is the same (128 query
+#     groups per step); only the number of micro-batches per step changes.
+# Same data rows, prompt and tokenizer (the Gaggle models share it, so the answer ids are the same), LCE at tau = 1,
+# 512/128 truncation, AdamW 5e-5 with 150 warmup steps and cosine decay, fp32 with TF32 matmuls, seed 17.
+
+# ---- model, prompt, data -----------------------------------------------------------------
+backbone_impl: upstream     # src/modeling_nanochat_upstream.py: nanochat's own GPT class
+model_name: models/PLACEHOLDER-gaggle-0.6b   # the released 0.6B checkpoint dir: model_<step>.pt + meta + tokenizer.json
+nanochat_src: ../pretrain/continue/third_party/nanochat           # 92d63d4 + nanochat_continue.patch (ve_every)
+prompt: nochat              # "<|bos|>Query: {query}\nPassage: {passage}\nRelevant:"  score = logit(" true") - logit(" false")
+train_parquet: data/rlhn250k_prepared_climbmix_lens/train.parquet   # RLHN-250K (data_prep/prepare_data.sh)
+output_dir: checkpoints/gaggle06b_lce
+max_doc_len: 512
+max_query_len: 128
+
+# ---- model setup ----------------------------------------------------------------------------
+lora: false                 # full fine-tuning of all parameters
+attn_implementation: sdpa
+precision: tf32             # fp32 weights, activations and optimizer state; TF32 matmuls; no autocast
+grad_checkpointing: true
+
+# ---- loss --------------------------------------------------------------------------------
+tau: 1.0                    # LCE only
+w_rkd: 0.0
+
+# ---- batching ---------------------------------------------------------------------------
+k_choices: [7, 15, 23]
+global_batch_groups: 128    # groups per optimizer step, independent of GPU count and memory
+max_groups: 32
+max_tokens_per_batch: 120000  # cap; the trainer lowers it to what the GPU fits
+mem_per_1k_tok_gib: 1.0
+
+# ---- optimization ------------------------------------------------------------------------
+seed: 17
+epochs: 1
+lr: 5.0e-5
+weight_decay: 0.01
+warmup_steps: 150
+clip: 12.0
+
+# ---- bookkeeping (no effect on training) ----------------------------------------------------
+num_workers: 6
+resume: auto
+save_every: 200
+keep_ckpts: 2
+log_every: 20
+wandb_project:              # set a W&B project name to log the run
+wandb_entity:
+wandb_run_name: gaggle06b_lce
+wandb_group:
+wandb_tags: [rlhn250k, gaggle-0.6b, pointwise, lce]
