@@ -210,7 +210,7 @@ def main():
         # same symmetric band AND masks padding, which pretraining never needed but a padded
         # reranking batch does. Running such a checkpoint causally is not how it was trained.
         model = UpstreamNanochatReranker(cfg["model_name"], yes_id=yes_id, no_id=no_id, dtype=dtype,
-                                         nanochat_src=cfg.get("nanochat_src"),
+                                         nanochat_src=cfg.get("nanochat_src"), step=cfg.get("model_step"),
                                          bidirectional=cfg.get("bidirectional", False),
                                          readout_offset=readout_offset(cfg.get("prompt", "chat")),
                                          score_mode=cfg.get("score_mode", "lm_rows"))

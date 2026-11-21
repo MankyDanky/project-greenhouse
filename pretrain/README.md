@@ -88,6 +88,7 @@ stage 3 keeps the 1M weight-decay amplitude (0.021764) and reports CORE every 1,
 | `stage1_ramp_to_92B/` | self-chaining legs (`head_base.sbatch`) with the batch ramp; `launch_ramp.sh` pins the LRs (`PIN_LR_BATCH=262144`) and ends at step 136,316 (`STOP_RAMP_AT`); checkpoint retention (`prune_ckpts.py`) |
 | `stage2_2m_continuation/` | trainer (`base_train.py` + `ablation_runtime.py`, built on nanochat's) that resumes step 136,316 at batch 2,097,152 for exactly 1,024 updates and records every rank's loader cursor in `COMPLETE.json` |
 | `stage3_2m_production/` | `production/`: the production trainer and its leg wrapper ([README](stage3_2m_production/production/README.md): clock, checkpoint and resume contract); the 8-rank NCCL/runtime probe and asset hashing it runs before each leg; `prepare_*.sbatch` and `launch_production.sh`; `best_core/` keeps a hard-linked copy of the best-CORE checkpoint |
+| `continue/` | continued pre-training from any checkpoint on another data mix: nanochat `92d63d4` + a patch (config file, start from a checkpoint, data and tokenizer dirs, literal learning rates), built by `setup.sh`; used by `benchmaxxing/cpt` ([README](continue/README.md)) |
 | `export_hf/` | conversion to `transformers`, the model code, the vLLM plugin, parity checks; `MODEL_CARD.md` is the published card |
 | `records/` | SHA256 pins of the original run and its production code manifest |
 

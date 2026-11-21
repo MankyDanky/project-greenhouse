@@ -1,53 +1,36 @@
 # Continued pretraining on the evaluation corpora
 
 Continue a Gaggle base model on the raw documents of the evaluation collections plus replayed pre-training data,
-then fine-tune and evaluate the reranker exactly as the paper does. **[PLAN.md](PLAN.md)** says what is run and why:
-when and what to mix, how much replay, the learning rate, and the literature behind them.
+then fine-tune and evaluate the reranker exactly as the paper does. **[PLAN.md](PLAN.md)** says what is run and why.
 
-Two YAML files hold every setting: `configs/data.yaml` for the data mix and `configs/train.yaml` for the training
-run. Their values are the defaults the plan runs; any key can be changed in the file or on the command line
-(`--set KEY=VALUE`, dotted keys, YAML values). Paths in the configs are relative to this folder. Run every command
-from here unless it says otherwise.
+What is specific to this experiment is its data: `prepare_data.py` and `configs/data.yaml`. Everything else uses the
+repository's shared tools:
+- training: the continued-pretraining trainer in [`pretrain/continue/`](../../pretrain/continue/), with this run's
+  settings in `configs/train.yaml`;
+- language-model evaluation: nanochat's `scripts/base_eval.py`, from the same place;
+- the reranker: [`reranker/`](../../reranker/) and [`eval/`](../../eval/), which take the run's checkpoint directory
+  as a backbone directly.
 
-**The 0.6B Gaggle model is not released yet.** Its entry carries placeholders for its repository, step and
-original weight decay: `models.gaggle06b` in `configs/train.yaml`, `configs/rerank/gaggle06b_lce.yaml`, and
-`REPO_06B` / `STEP_06B` in `fetch_models.sh`. `train.py` stops until they are filled in.
-
-## Files
+Run every command from this folder unless it says otherwise; paths in the configs are relative to it.
 
 | Path | What it is |
 |---|---|
 | `PLAN.md` | the plan and the literature behind it |
-| `setup.sh` | builds the trainer: karpathy/nanochat at `92d63d4` + `nanochat_cpt.patch` in `third_party/nanochat` (`--env` also creates the training environment) |
-| `requirements-data.txt` | the data-preparation environment (plus Java 21 for pyserini) |
-| `nanochat_cpt.patch` | the changes to nanochat, each commented in the code (listed in `setup.sh`) |
-| `fetch_models.sh` | downloads the starting checkpoints from Hugging Face and verifies their SHA256 |
 | `prepare_data.py` | builds the mix: corpus documents + replay, as nanochat shards, plus three evaluation sets |
-| `train.py` | turns the train config into nanochat's `scripts/base_train.py` flags and runs it |
-| `evaluate.py` | bpb on the evaluation sets (and optionally CORE) for the run or its starting checkpoint |
-| `export_for_reranker.py` | copies a CPT checkpoint into `reranker/models/` and prints the fine-tuning and evaluation commands |
 | `configs/data.yaml` | the data config |
-| `configs/train.yaml` | the training config, with the two starting models (`models`) |
-| `configs/rerank/gaggle06b_lce.yaml` | the reranker recipe for the 0.6B model (the 3B model uses the paper's `reranker/configs/sft/run1_seed17.yaml`) |
-| `tests/` | CPU smoke tests: `smoke_data.sh` (data preparation) and `smoke_train.sh` (train → evaluate → export) |
+| `configs/train.yaml` | the run's trainer flags (3B model) |
+| `requirements-data.txt` | the data-preparation environment (plus Java 21 for pyserini) |
+| `tests/smoke_data.sh` | CPU smoke test of data preparation |
 
-Generated, not committed: `third_party/`, `models/`, `work/` (caches, checkpoints), `data/` (mixes), `results/`.
+Generated, not committed: `work/` (caches, checkpoints) and `data/` (mixes).
 
 ## 1. Set up
 
-Two Python environments: one for data preparation, one for training (nanochat's pinned GPU stack).
-
 ```bash
 python -m venv .venv-data && .venv-data/bin/pip install -r requirements-data.txt   # + Java 21 on PATH (pyserini)
-bash setup.sh --env                     # nanochat @ 92d63d4 + patch; .venv with uv (needs uv and CUDA 12.8 drivers)
-bash fetch_models.sh                    # the starting models (3B: 10.6 GB); or: 3b | 0.6b | --tokenizer
-```
-
-Check the pipeline on CPU in a few minutes:
-
-```bash
-PYTHON=.venv-data/bin/python bash tests/smoke_data.sh
-PYTHON=third_party/nanochat/.venv/bin/python bash tests/smoke_train.sh
+bash ../../pretrain/continue/setup.sh --env                    # the trainer and its environment
+(cd ../../reranker && bash data_prep/fetch_models.sh gaggle)   # the 3B base model (10.6 GB)
+PYTHON=.venv-data/bin/python bash tests/smoke_data.sh          # CPU check of the data preparation
 ```
 
 ## 2. Build the mix
@@ -55,6 +38,9 @@ PYTHON=third_party/nanochat/.venv/bin/python bash tests/smoke_train.sh
 ```bash
 .venv-data/bin/python prepare_data.py configs/data.yaml          # -> data/ir_mix
 ```
+
+Any key of the config can also be set on the command line (`--set KEY=VALUE`, dotted keys, YAML values). At the
+end, the log prints `num-iterations` for one pass over the mix; `configs/train.yaml` has the value for the default mix.
 
 Resources: a few hours on one CPU node for the corpus caches (about 11,000 passages a second in our test; MS MARCO
 v2 has 138M, and its whole cache is built even though the mix uses part of it), a few GB of memory whatever the
@@ -107,54 +93,48 @@ before releasing a model trained on them.
 ## 3. Train
 
 ```bash
-python train.py configs/train.yaml --check            # derived flags, validation; no training
-python train.py configs/train.yaml --ngpu 8           # the 3B model; --set model=gaggle06b for the 0.6B model
+source ../../pretrain/continue/third_party/nanochat/.venv/bin/activate
+NANOCHAT_BASE_DIR=work/nanochat_base PYTHONPATH=../../pretrain/continue/third_party/nanochat \
+  torchrun --standalone --nproc_per_node=8 -m scripts.base_train --config configs/train.yaml
 ```
 
-`model` picks an entry of `models`: its checkpoint, original weight decay, device batch and reranker recipe.
-`train.py` reads the checkpoint's `meta_<step>.json` and derives:
-- the architecture flags;
-- the peak learning rates: the original run's peak times `lr.scale`;
-- the number of steps: one pass over the mix;
-- the warmup and decay.
-
-It then runs nanochat's trainer, with `--init-from-dir` (the released weights, fresh optimizer) and
-`--literal-hparams` (no batch-size or horizon rescaling). Checkpoints go to
-`work/nanochat_base/base_checkpoints/<run>/`, where the run is named `<model>_<mix name>` (e.g. `gaggle3b_ir_mix`).
-
-- **Resume:** a rerun resumes from the newest complete checkpoint, so a preempted job can just be resubmitted.
-- **Saved config:** the run saves its resolved config there as `cpt_config.yaml`, and a rerun with different
-  settings is refused rather than resuming with another recipe.
-- **Overrides:** an override that changes the recipe also needs `run=<new name>`.
-
-Under Slurm, wrap the same command in your job script.
+The run starts from the released 3B checkpoint with a fresh optimizer and trains one pass over the mix (settings in
+PLAN.md, section 5). Its checkpoints, with the model's tokenizer, go to
+`work/nanochat_base/base_checkpoints/gaggle3b_ir_mix/`. Rerunning the command resumes the run.
 
 ## 4. Evaluate the language model
 
+Before and after, on the mix's evaluation sets, with `base_eval.py --checkpoint-dir`:
+
 ```bash
-python evaluate.py configs/train.yaml --init --core   # the starting checkpoint
-python evaluate.py configs/train.yaml --core          # the run's final checkpoint (pass the run's --set, if any)
+export PYTHONPATH=../../pretrain/continue/third_party/nanochat
+for ckpt in ../../reranker/models/gaggle-nanochat-pretrained-climbmix-20260924 work/nanochat_base/base_checkpoints/gaggle3b_ir_mix; do
+  for set in heldout_corpus seen_corpus heldout_replay; do
+    NANOCHAT_DATA_DIR=data/ir_mix/$set python -m scripts.base_eval --eval bpb --checkpoint-dir $ckpt \
+      --device-batch-size 8 --split-tokens 524288
+  done
+  NANOCHAT_BASE_DIR=work/nanochat_base python -m scripts.base_eval --eval core --checkpoint-dir $ckpt
+done
 ```
 
-Writes `results/<run>/{init,step_N}.json` with bpb on `heldout_corpus` (gain), `seen_corpus` (its difference from
-held-out is memorisation), `heldout_replay` (forgetting) and CORE.
+`base_eval` reports bpb for the two shards of each set; take their mean.
+- **Gain:** a lower `heldout_corpus` bpb after CPT.
+- **Memorisation:** how much more `seen_corpus` falls than `heldout_corpus`.
+- **Forgetting:** a rise in `heldout_replay` bpb.
 
 ## 5. Fine-tune and evaluate the reranker
 
-```bash
-python export_for_reranker.py configs/train.yaml      # -> reranker/models/cpt-gaggle3b_ir_mix
-```
-
-It prints the exact commands. For the 3B model that is the paper's run-1 recipe with the backbone swapped:
+The run's directory is the backbone; the newest step (the final one) is used. From the repository root:
 
 ```bash
-cd ../../reranker
-bash launch/train.sh configs/sft/run1_seed17.yaml 2 --override model_name=models/cpt-gaggle3b_ir_mix \
+cd reranker
+bash launch/train.sh configs/sft/run1_seed17.yaml 2 \
+  --override model_name=../benchmaxxing/cpt/work/nanochat_base/base_checkpoints/gaggle3b_ir_mix \
   output_dir=checkpoints/cpt_gaggle3b_ir_mix wandb_run_name=cpt_gaggle3b_ir_mix
 cd .. && bash eval/run_eval.sh ours reranker/checkpoints/cpt_gaggle3b_ir_mix/ckpt_final.pt cpt_gaggle3b_ir_mix
 python eval/report.py cpt_gaggle3b_ir_mix
 ```
 
 The reranker needs its fine-tuning data (`reranker/data_prep/`) and the BM25 candidates (`eval/candidates/`); see
-the repository's [ONBOARDING.md](../../ONBOARDING.md). The 0.6B model uses `configs/rerank/gaggle06b_lce.yaml` (each
-entry of `models` names its recipe in `rerank_config`).
+the repository's [ONBOARDING.md](../../ONBOARDING.md). The 0.6B model, once released, uses
+`reranker/configs/experiments/gaggle06b_lce.yaml`.

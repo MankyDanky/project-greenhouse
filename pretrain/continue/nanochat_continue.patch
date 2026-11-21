@@ -1,6 +1,8 @@
-diff -ruN '--exclude=__pycache__' base/nanochat/batch_schedule.py work/nanochat/batch_schedule.py
---- base/nanochat/batch_schedule.py	1970-01-01 00:00:00.000000000 +0000
-+++ work/nanochat/batch_schedule.py	2026-11-20 18:37:47.947779326 +0000
+diff --git a/nanochat/batch_schedule.py b/nanochat/batch_schedule.py
+new file mode 100644
+index 0000000..ed21b69
+--- /dev/null
++++ b/nanochat/batch_schedule.py
 @@ -0,0 +1,83 @@
 +"""
 +Phased total batch size for pretraining, e.g. 262k -> 524k -> 1M -> 2M tokens over a fixed token horizon, as in
@@ -85,23 +87,25 @@ diff -ruN '--exclude=__pycache__' base/nanochat/batch_schedule.py work/nanochat/
 +        tokens_before.append(tokens)
 +        canonical_before.append(canonical)
 +    return BatchSchedule(phases, target_tokens, canonical_batch, batch, tokens_before, canonical_before)
-diff -ruN '--exclude=__pycache__' base/nanochat/dataset.py work/nanochat/dataset.py
---- base/nanochat/dataset.py	2026-07-03 22:54:57.000000000 +0000
-+++ work/nanochat/dataset.py	2026-11-20 18:38:07.524889189 +0000
-@@ -24,7 +24,8 @@
+diff --git a/nanochat/dataset.py b/nanochat/dataset.py
+index fffe722..34a1da2 100644
+--- a/nanochat/dataset.py
++++ b/nanochat/dataset.py
+@@ -24,7 +24,8 @@ BASE_URL = "https://huggingface.co/datasets/karpathy/climbmix-400b-shuffle/resol
  MAX_SHARD = 6542 # the last datashard is shard_06542.parquet
  index_to_filename = lambda index: f"shard_{index:05d}.parquet" # format of the filenames
  base_dir = get_base_dir()
 -DATA_DIR = os.path.join(base_dir, "base_data_climbmix")
-+# (cpt) NANOCHAT_DATA_DIR points the loader at another shard directory, e.g. a continued-pretraining mix.
++# (continue) NANOCHAT_DATA_DIR points the loader at another shard directory, e.g. a continued-pretraining mix.
 +DATA_DIR = os.environ.get("NANOCHAT_DATA_DIR") or os.path.join(base_dir, "base_data_climbmix")
  
  # -----------------------------------------------------------------------------
  # These functions are useful utilities to other modules, can/should be imported
-diff -ruN '--exclude=__pycache__' base/nanochat/flash_attention.py work/nanochat/flash_attention.py
---- base/nanochat/flash_attention.py	2026-07-03 22:54:57.000000000 +0000
-+++ work/nanochat/flash_attention.py	2026-11-20 18:37:47.962779410 +0000
-@@ -28,6 +28,13 @@
+diff --git a/nanochat/flash_attention.py b/nanochat/flash_attention.py
+index 7412b91..4e7b071 100644
+--- a/nanochat/flash_attention.py
++++ b/nanochat/flash_attention.py
+@@ -28,6 +28,13 @@ def _load_flash_attention_3():
          major, _ = torch.cuda.get_device_capability()
          # FA3 kernels are currently compiled for Hopper (sm90), Ada (sm89) and Ampere (sm80/sm86)
          # Blackwell (sm100) needs SDPA fallback until FA3 is recompiled or FA4 is released
@@ -115,7 +119,7 @@ diff -ruN '--exclude=__pycache__' base/nanochat/flash_attention.py work/nanochat
          import os
          os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
          from kernels import get_kernel, has_kernel
-@@ -49,8 +56,10 @@
+@@ -49,8 +56,10 @@ def _load_flash_attention_3():
  _fa3 = _load_flash_attention_3()
  HAS_FA3 = _fa3 is not None
  
@@ -128,10 +132,11 @@ diff -ruN '--exclude=__pycache__' base/nanochat/flash_attention.py work/nanochat
  
  
  def _resolve_use_fa3():
-diff -ruN '--exclude=__pycache__' base/nanochat/gpt.py work/nanochat/gpt.py
---- base/nanochat/gpt.py	2026-07-03 22:54:57.000000000 +0000
-+++ work/nanochat/gpt.py	2026-11-20 18:37:47.963779416 +0000
-@@ -37,6 +37,9 @@
+diff --git a/nanochat/gpt.py b/nanochat/gpt.py
+index 1e89378..95197ea 100644
+--- a/nanochat/gpt.py
++++ b/nanochat/gpt.py
+@@ -37,6 +37,9 @@ class GPTConfig:
      # Characters: L=long (full context), S=short (quarter context)
      # Examples: "L"=all full context, "SL"=alternating, "SSL"=two short then one long
      window_pattern: str = "SSSL"
@@ -141,7 +146,7 @@ diff -ruN '--exclude=__pycache__' base/nanochat/gpt.py work/nanochat/gpt.py
  
  
  def norm(x):
-@@ -50,9 +53,11 @@
+@@ -50,9 +53,11 @@ class Linear(nn.Linear):
          return F.linear(x, self.weight.to(dtype=x.dtype))
  
  
@@ -156,7 +161,7 @@ diff -ruN '--exclude=__pycache__' base/nanochat/gpt.py work/nanochat/gpt.py
  
  def apply_rotary_emb(x, cos, sin):
      # note: this rotates by -theta, the transpose of the textbook convention. Functionally
-@@ -79,7 +84,7 @@
+@@ -79,7 +84,7 @@ class CausalSelfAttention(nn.Module):
          self.c_v = Linear(self.n_embd, self.n_kv_head * self.head_dim, bias=False)
          self.c_proj = Linear(self.n_embd, self.n_embd, bias=False)
          self.ve_gate_channels = 12
@@ -165,7 +170,7 @@ diff -ruN '--exclude=__pycache__' base/nanochat/gpt.py work/nanochat/gpt.py
  
      def forward(self, x, ve, cos_sin, window_size, kv_cache):
          B, T, C = x.size()
-@@ -189,7 +194,7 @@
+@@ -189,7 +194,7 @@ class GPT(nn.Module):
          # Value embeddings (ResFormer-style): alternating layers, last layer always included
          head_dim = config.n_embd // config.n_head
          kv_dim = config.n_kv_head * head_dim
@@ -174,10 +179,73 @@ diff -ruN '--exclude=__pycache__' base/nanochat/gpt.py work/nanochat/gpt.py
          # To support meta device initialization, we init the rotary embeddings here, but it's just "fake" meta tensors only.
          # As for rotary_seq_len, these rotary embeddings are pretty small/cheap in memory,
          # so let's just over-compute them by 10X, but assert fail if we ever reach that amount.
-diff -ruN '--exclude=__pycache__' base/scripts/base_train.py work/scripts/base_train.py
---- base/scripts/base_train.py	2026-07-03 22:54:57.000000000 +0000
-+++ work/scripts/base_train.py	2026-11-20 18:38:07.525889195 +0000
-@@ -33,6 +33,7 @@
+diff --git a/nanochat/tokenizer.py b/nanochat/tokenizer.py
+index 36880f5..1b4c0b9 100644
+--- a/nanochat/tokenizer.py
++++ b/nanochat/tokenizer.py
+@@ -261,18 +261,17 @@ class RustBPETokenizer:
+ # -----------------------------------------------------------------------------
+ # nanochat-specific convenience functions
+ 
+-def get_tokenizer():
++def _tokenizer_dir():
++    # (continue) NANOCHAT_TOKENIZER_DIR points at another tokenizer, e.g. the one released with a checkpoint
+     from nanochat.common import get_base_dir
+-    base_dir = get_base_dir()
+-    tokenizer_dir = os.path.join(base_dir, "tokenizer")
+-    return RustBPETokenizer.from_directory(tokenizer_dir)
++    return os.environ.get("NANOCHAT_TOKENIZER_DIR") or os.path.join(get_base_dir(), "tokenizer")
++
++def get_tokenizer():
++    return RustBPETokenizer.from_directory(_tokenizer_dir())
+ 
+ def get_token_bytes(device="cpu"):
+     import torch
+-    from nanochat.common import get_base_dir
+-    base_dir = get_base_dir()
+-    tokenizer_dir = os.path.join(base_dir, "tokenizer")
+-    token_bytes_path = os.path.join(tokenizer_dir, "token_bytes.pt")
++    token_bytes_path = os.path.join(_tokenizer_dir(), "token_bytes.pt")
+     assert os.path.exists(token_bytes_path), f"Token bytes not found at {token_bytes_path}? It gets written by tok_train.py"
+     with open(token_bytes_path, "rb") as f:
+         token_bytes = torch.load(f, map_location=device)
+diff --git a/scripts/base_eval.py b/scripts/base_eval.py
+index d9bf021..399b55e 100644
+--- a/scripts/base_eval.py
++++ b/scripts/base_eval.py
+@@ -134,7 +134,13 @@ def main():
+     parser.add_argument('--device-batch-size', type=int, default=32, help='Per-device batch size for BPB evaluation')
+     parser.add_argument('--split-tokens', type=int, default=40*524288, help='Number of tokens to evaluate per split for BPB')
+     parser.add_argument('--device-type', type=str, default='', help='cuda|cpu|mps (empty = autodetect)')
++    parser.add_argument('--checkpoint-dir', type=str, default='', help='(continue) evaluate a checkpoint in this directory (model_<step>.pt + meta_<step>.json) instead of a --model-tag')
++    parser.add_argument('--tokenizer-dir', type=str, default='', help='(continue) tokenizer directory; default with --checkpoint-dir: <checkpoint-dir>/tokenizer if it exists')
+     args = parser.parse_args()
++    if not args.tokenizer_dir and args.checkpoint_dir and os.path.isdir(os.path.join(args.checkpoint_dir, "tokenizer")):
++        args.tokenizer_dir = os.path.join(args.checkpoint_dir, "tokenizer")
++    if args.tokenizer_dir:
++        os.environ["NANOCHAT_TOKENIZER_DIR"] = args.tokenizer_dir
+ 
+     # Parse evaluation modes
+     eval_modes = set(mode.strip() for mode in args.eval.split(','))
+@@ -147,7 +153,12 @@ def main():
+     device_type = autodetect_device_type() if args.device_type == '' else args.device_type
+     ddp, ddp_rank, ddp_local_rank, ddp_world_size, device = compute_init(device_type)
+     # Load model and tokenizer
+-    model, tokenizer, meta = load_model("base", device, phase="eval", model_tag=args.model_tag, step=args.step)
++    if args.checkpoint_dir:  # (continue) any checkpoint directory, e.g. a released one
++        from nanochat.checkpoint_manager import build_model, find_last_step
++        step = args.step if args.step is not None else find_last_step(args.checkpoint_dir)
++        model, tokenizer, meta = build_model(args.checkpoint_dir, step, device, phase="eval")
++    else:
++        model, tokenizer, meta = load_model("base", device, phase="eval", model_tag=args.model_tag, step=args.step)
+     sequence_len = meta["model_config"]["sequence_len"]
+     token_bytes = get_token_bytes(device=device)
+     model_name = f"base_model (step {meta['step']})"
+diff --git a/scripts/base_train.py b/scripts/base_train.py
+index d1af271..cb349f5 100644
+--- a/scripts/base_train.py
++++ b/scripts/base_train.py
+@@ -33,6 +33,7 @@ from nanochat.checkpoint_manager import save_checkpoint, load_checkpoint
  from nanochat.loss_eval import evaluate_bpb
  from nanochat.engine import Engine
  from nanochat.flash_attention import HAS_FA3
@@ -185,7 +253,7 @@ diff -ruN '--exclude=__pycache__' base/scripts/base_train.py work/scripts/base_t
  from scripts.base_eval import evaluate_core
  print_banner()
  
-@@ -52,6 +53,7 @@
+@@ -52,6 +53,7 @@ parser.add_argument("--aspect-ratio", type=int, default=64, help="model_dim = de
  parser.add_argument("--head-dim", type=int, default=128, help="target head dimension for attention")
  parser.add_argument("--max-seq-len", type=int, default=2048, help="max context length")
  parser.add_argument("--window-pattern", type=str, default="SSSL", help="sliding window pattern tiled across layers: L=full, S=half context (e.g. 'SSL')")
@@ -193,7 +261,7 @@ diff -ruN '--exclude=__pycache__' base/scripts/base_train.py work/scripts/base_t
  # Training horizon (only one used, in order of precedence)
  parser.add_argument("--num-iterations", type=int, default=-1, help="explicit number of optimization steps (-1 = disable)")
  parser.add_argument("--target-flops", type=float, default=-1.0, help="calculate num_iterations to reach target_flops (-1 = disable)")
-@@ -59,6 +61,10 @@
+@@ -59,6 +61,10 @@ parser.add_argument("--target-param-data-ratio", type=float, default=12, help="c
  # Optimization
  parser.add_argument("--device-batch-size", type=int, default=32, help="per-device batch size. good number to reduce to 16,8,4,... if you OOM on VRAM.")
  parser.add_argument("--total-batch-size", type=int, default=-1, help="total batch size in tokens. decent numbers are e.g. 524288. (-1 = auto-compute optimal)")
@@ -204,21 +272,44 @@ diff -ruN '--exclude=__pycache__' base/scripts/base_train.py work/scripts/base_t
  parser.add_argument("--embedding-lr", type=float, default=0.3, help="learning rate for embedding parameters (Adam)")
  parser.add_argument("--unembedding-lr", type=float, default=0.008, help="learning rate for unembedding parameters (Adam)")
  parser.add_argument("--weight-decay", type=float, default=0.28, help="cautious weight decay for the Muon optimizer (for weights)")
-@@ -75,6 +81,13 @@
+@@ -75,9 +81,36 @@ parser.add_argument("--core-metric-every", type=int, default=2000, help="evaluat
  parser.add_argument("--core-metric-max-per-task", type=int, default=500, help="examples per task for CORE metric")
  parser.add_argument("--sample-every", type=int, default=2000, help="sample from model every N steps (-1 = disable)")
  parser.add_argument("--save-every", type=int, default=-1, help="save checkpoints every N steps (-1 = only at end)")
 +parser.add_argument("--keep-checkpoints", type=int, default=-1, help="after each complete save, delete all but the newest N complete checkpoints (-1 = keep all)")
 +parser.add_argument("--log-every", type=int, default=100, help="log train metrics (loss, lr, dt, tok/s, mfu) to wandb every N steps")
 +parser.add_argument("--auto-resume", action="store_true", help="resume from the newest complete checkpoint of this model tag, if any (for preemptible/requeued jobs)")
-+# (cpt) continued pretraining from a released checkpoint
-+parser.add_argument("--init-from-dir", type=str, default="", help="(cpt) start from the weights in this checkpoint dir (model_<step>.pt + meta_<step>.json), with a fresh optimizer")
-+parser.add_argument("--init-from-step", type=int, default=-1, help="(cpt) step of the --init-from-dir checkpoint")
-+parser.add_argument("--literal-hparams", action="store_true", help="(cpt) use the given LRs and weight decay as they are: no batch-size LR scaling, no batch/horizon weight-decay scaling")
++# (continue) continued pretraining from a released checkpoint
++parser.add_argument("--init-from-dir", type=str, default="", help="(continue) start from the weights in this checkpoint dir (model_<step>.pt + meta_<step>.json), with a fresh optimizer")
++parser.add_argument("--init-from-step", type=int, default=-1, help="(continue) step of the --init-from-dir checkpoint")
++parser.add_argument("--literal-hparams", action="store_true", help="(continue) use the given LRs and weight decay as they are: no batch-size LR scaling, no batch/horizon weight-decay scaling")
++parser.add_argument("--data-dir", type=str, default="", help="(continue) read the training shards from this directory (as NANOCHAT_DATA_DIR does)")
++parser.add_argument("--tokenizer-dir", type=str, default="", help="(continue) tokenizer directory (tokenizer.pkl, token_bytes.pt); default: <init-from-dir>/tokenizer if it exists, else nanochat's")
  # Output
  parser.add_argument("--model-tag", type=str, default=None, help="override model tag for checkpoint directory name")
++# (continue) --config FILE.yaml: values for any of the flags above, from a YAML file whose keys are the flag names (dashes or
++# underscores). Flags given on the command line override the file; a key that is not a flag is an error.
++parser.add_argument("--config", type=str, default="", help="(continue) YAML file of flag values; the command line overrides it")
++_config_path = parser.parse_known_args()[0].config
++if _config_path:
++    import yaml
++    with open(_config_path) as f:
++        _file_config = {k.replace("-", "_"): v for k, v in (yaml.safe_load(f) or {}).items()}
++    _unknown = sorted(set(_file_config) - {a.dest for a in parser._actions})
++    assert not _unknown, f"--config {_config_path}: not flags of this script: {_unknown}"
++    parser.set_defaults(**_file_config)
  args = parser.parse_args()
-@@ -97,7 +110,10 @@
++if args.data_dir:  # (continue) the loader lists its shards from nanochat.dataset.DATA_DIR
++    import nanochat.dataset
++    nanochat.dataset.DATA_DIR = args.data_dir
++if not args.tokenizer_dir and args.init_from_dir and os.path.isdir(os.path.join(args.init_from_dir, "tokenizer")):
++    args.tokenizer_dir = os.path.join(args.init_from_dir, "tokenizer")  # (continue) the model's own tokenizer
++if args.tokenizer_dir:
++    os.environ["NANOCHAT_TOKENIZER_DIR"] = args.tokenizer_dir
+ user_config = vars(args).copy()  # for logging
+ # -----------------------------------------------------------------------------
+ # Compute init and wandb logging
+@@ -97,7 +130,10 @@ print0(f"COMPUTE_DTYPE: {COMPUTE_DTYPE} ({COMPUTE_DTYPE_REASON})")
  
  # wandb logging init
  use_dummy_wandb = args.run == "dummy" or not master_process
@@ -230,7 +321,7 @@ diff -ruN '--exclude=__pycache__' base/scripts/base_train.py work/scripts/base_t
  
  # Flash Attention status
  from nanochat.flash_attention import USE_FA3
-@@ -126,17 +142,20 @@
+@@ -126,17 +162,20 @@ print0(f"Vocab size: {vocab_size:,}")
  # -----------------------------------------------------------------------------
  # Initialize the Model
  
@@ -255,7 +346,7 @@ diff -ruN '--exclude=__pycache__' base/scripts/base_train.py work/scripts/base_t
      )
      with torch.device("meta"):
          model_meta = GPT(config)
-@@ -154,6 +173,38 @@
+@@ -154,6 +193,47 @@ model.init_weights() # 3) All tensors get initialized
  base_dir = get_base_dir()
  output_dirname = args.model_tag if args.model_tag else f"d{args.depth}" # e.g. d12
  checkpoint_dir = os.path.join(base_dir, "base_checkpoints", output_dirname)
@@ -276,8 +367,17 @@ diff -ruN '--exclude=__pycache__' base/scripts/base_train.py work/scripts/base_t
 +        print0(f"Auto-resume: newest complete checkpoint in {checkpoint_dir} is step {args.resume_from_step}")
 +    else:
 +        print0(f"Auto-resume: no complete checkpoint in {checkpoint_dir}, starting from scratch")
-+# (cpt) a fresh run initialised from another checkpoint: same architecture (checked against its meta), new optimizer.
++# (continue) a fresh run initialised from another checkpoint: same architecture (checked against its meta), new optimizer.
 +# A resumed run (its own checkpoint exists) takes precedence, so a preempted CPT job continues where it stopped.
++if args.init_from_dir and master_process:
++    # (continue) the run's checkpoint dir carries the tokenizer of the model it started from, as a released checkpoint
++    # dir does, so the run can be loaded like one (a step of it as a reranker backbone, or by base_eval)
++    import shutil
++    os.makedirs(checkpoint_dir, exist_ok=True)
++    for _name in ("tokenizer.json", "tokenizer_config.json", "tokenizer"):
++        _src, _dst = os.path.join(args.init_from_dir, _name), os.path.join(checkpoint_dir, _name)
++        if os.path.exists(_src) and not os.path.exists(_dst):
++            (shutil.copytree if os.path.isdir(_src) else shutil.copy2)(_src, _dst)
 +if args.init_from_dir and args.resume_from_step == -1:
 +    assert args.init_from_step >= 0, "--init-from-dir needs --init-from-step"
 +    with open(os.path.join(args.init_from_dir, f"meta_{args.init_from_step:06d}.json")) as f:
@@ -290,11 +390,11 @@ diff -ruN '--exclude=__pycache__' base/scripts/base_train.py work/scripts/base_t
 +    init_state = {k.removeprefix("_orig_mod."): v for k, v in init_state.items()}
 +    model.load_state_dict(init_state, strict=True, assign=True)
 +    del init_state
-+    print0(f"(cpt) initialised from {args.init_from_dir} step {args.init_from_step}; fresh optimizer")
++    print0(f"(continue) initialised from {args.init_from_dir} step {args.init_from_step}; fresh optimizer")
  resuming = args.resume_from_step != -1
  if resuming:
      print0(f"Resuming optimization from step {args.resume_from_step}")
-@@ -269,7 +320,10 @@
+@@ -269,7 +349,10 @@ num_scaling_params = get_scaling_params(model)
  target_tokens = int(args.target_param_data_ratio * num_scaling_params) # optimal tokens for the model we are about to train
  
  # Our reference model is d12, this is where a lot of hyperparameters are tuned and then transfered to higher depths (muP style)
@@ -306,7 +406,7 @@ diff -ruN '--exclude=__pycache__' base/scripts/base_train.py work/scripts/base_t
  D_REF = args.target_param_data_ratio * get_scaling_params(d12_ref) # compute-optimal d12 training horizon in tokens (measured empirically)
  B_REF = 2**19 # optimal batch size at d12 ~= 524,288 tokens (measured empirically)
  
-@@ -277,7 +331,15 @@
+@@ -277,7 +360,15 @@ B_REF = 2**19 # optimal batch size at d12 ~= 524,288 tokens (measured empiricall
  # We follow the Power Lines paper (Bopt ∝ D^0.383), ref: https://arxiv.org/abs/2505.13738
  # The optimal batch size grows as approximately D^0.383, so e.g. if D doubles from d12 to d24, B should grow by 2^0.383 ≈ 1.3x.
  total_batch_size = args.total_batch_size # user-provided override is possible
@@ -323,7 +423,7 @@ diff -ruN '--exclude=__pycache__' base/scripts/base_train.py work/scripts/base_t
      batch_size_ratio = target_tokens / D_REF
      predicted_batch_size = B_REF * batch_size_ratio ** 0.383
      total_batch_size = 2 ** round(math.log2(predicted_batch_size)) # clamp to nearest power of 2 for efficiency
-@@ -286,7 +348,7 @@
+@@ -286,7 +377,7 @@ if total_batch_size == -1:
  # 3) Knowing the batch size, we can now calculate a learning rate correction (bigger batch size allows higher learning rates)
  batch_lr_scale = 1.0
  batch_ratio = total_batch_size / B_REF # B/B_ref
@@ -332,11 +432,11 @@ diff -ruN '--exclude=__pycache__' base/scripts/base_train.py work/scripts/base_t
      # SGD: linear scaling with batch size is standard (not used in nanochat)
      # AdamW: sqrt scaling is standard: η ∝ √(B/B_ref)
      # Muon: we will use the same scaling for Muon as for AdamW: η ∝ √(B/B_ref) (not studied carefully, assumption!)
-@@ -300,9 +362,18 @@
+@@ -300,9 +391,18 @@ if batch_ratio != 1.0:
  # λ = λ_ref · √(B/B_ref) · (D_ref/D)
  # Note that these papers study AdamW, *not* Muon. We are blindly following AdamW theory for scaling hoping it ~works for Muon too.
  weight_decay_scaled = args.weight_decay * math.sqrt(total_batch_size / B_REF) * (D_REF / target_tokens)
-+if args.literal_hparams:  # (cpt) the given value is the Muon weight-decay amplitude itself (it still follows the cosine)
++if args.literal_hparams:  # (continue) the given value is the Muon weight-decay amplitude itself (it still follows the cosine)
 +    weight_decay_scaled = args.weight_decay
  if weight_decay_scaled != args.weight_decay:
      print0(f"Scaling weight decay from {args.weight_decay:.6f} to {weight_decay_scaled:.6f} for depth {args.depth}")
@@ -351,7 +451,7 @@ diff -ruN '--exclude=__pycache__' base/scripts/base_train.py work/scripts/base_t
  # -----------------------------------------------------------------------------
  # Initialize the Optimizer (combined MuonAdamW: Muon for matrix params, AdamW for rest)
  optimizer = model.setup_optimizer(
-@@ -337,7 +408,21 @@
+@@ -337,7 +437,21 @@ x, y, dataloader_state_dict = next(train_loader) # kick off load of the very fir
  
  # num_iterations: either it is given, or from target flops, or from target data:param ratio (in that order)
  assert args.num_iterations > 0 or args.target_param_data_ratio > 0 or args.target_flops > 0
@@ -374,7 +474,7 @@ diff -ruN '--exclude=__pycache__' base/scripts/base_train.py work/scripts/base_t
      # Override num_iterations to a specific value if given
      num_iterations = args.num_iterations
      print0(f"Using user-provided number of iterations: {num_iterations:,}")
-@@ -351,39 +436,66 @@
+@@ -351,39 +465,66 @@ elif args.target_param_data_ratio > 0:
      print0(f"Calculated number of iterations from target data:param ratio: {num_iterations:,}")
  else:
      raise ValueError("No training horizon specified")
@@ -455,7 +555,7 @@ diff -ruN '--exclude=__pycache__' base/scripts/base_train.py work/scripts/base_t
  
  # -----------------------------------------------------------------------------
  # Training loop
-@@ -406,7 +518,10 @@
+@@ -406,7 +547,10 @@ else:
  # Figure out the needed gradient accumulation micro-steps to reach the desired total batch size per step
  tokens_per_fwdbwd = args.device_batch_size * args.max_seq_len # tokens per iteration for a single rank
  world_tokens_per_fwdbwd = tokens_per_fwdbwd * ddp_world_size # total tokens per iteration for all ranks
@@ -467,7 +567,7 @@ diff -ruN '--exclude=__pycache__' base/scripts/base_train.py work/scripts/base_t
  grad_accum_steps = total_batch_size // world_tokens_per_fwdbwd
  print0(f"Tokens / micro-batch / rank: {args.device_batch_size} x {args.max_seq_len} = {tokens_per_fwdbwd:,}")
  print0(f"Tokens / micro-batch: {world_tokens_per_fwdbwd:,}")
-@@ -415,7 +530,12 @@
+@@ -415,7 +559,12 @@ print0(f"Total batch size {total_batch_size:,} => gradient accumulation steps: {
  # Go!
  while True:
      last_step = step == num_iterations # loop runs num_iterations+1 times so that we can eval/save at the end
@@ -481,7 +581,17 @@ diff -ruN '--exclude=__pycache__' base/scripts/base_train.py work/scripts/base_t
  
      # once in a while: evaluate the val bpb (all ranks participate)
      if args.eval_every > 0 and (last_step or step % args.eval_every == 0):
-@@ -497,6 +617,23 @@
+@@ -483,7 +632,8 @@ while True:
+             { # metadata saved as json
+                 "step": step,
+                 "val_bpb": val_bpb, # loss at last step
+-                "model_config": model_config_kwargs,
++                # (continue) ve_every only when it is not upstream's 2, so such checkpoints keep upstream's meta format
++                "model_config": {k: v for k, v in model_config_kwargs.items() if not (k == "ve_every" and v == 2)},
+                 "user_config": user_config, # inputs to the training script
+                 "device_batch_size": args.device_batch_size,
+                 "max_seq_len": args.max_seq_len,
+@@ -497,6 +647,23 @@ while True:
              },
              rank=ddp_rank,
          )
@@ -505,7 +615,7 @@ diff -ruN '--exclude=__pycache__' base/scripts/base_train.py work/scripts/base_t
  
      # termination conditions (TODO: possibly also add loss explosions etc.)
      if last_step:
-@@ -524,7 +661,7 @@
+@@ -524,7 +691,7 @@ while True:
          group["lr"] = group["initial_lr"] * lrm
          if group['kind'] == 'muon':
              group["momentum"] = muon_momentum
@@ -514,7 +624,7 @@ diff -ruN '--exclude=__pycache__' base/scripts/base_train.py work/scripts/base_t
      if scaler is not None:
          scaler.unscale_(optimizer)
          # In distributed training, all ranks must agree on whether to skip the step.
-@@ -564,8 +701,9 @@
+@@ -564,8 +731,9 @@ while True:
      else:
          eta_str = ""
      epoch = f"{dataloader_state_dict['epoch']} pq: {dataloader_state_dict['pq_idx']} rg: {dataloader_state_dict['rg_idx']}"
@@ -526,7 +636,7 @@ diff -ruN '--exclude=__pycache__' base/scripts/base_train.py work/scripts/base_t
          log_data = {
              "step": step,
              "total_training_flops": flops_so_far,
-@@ -577,6 +715,11 @@
+@@ -577,6 +745,11 @@ while True:
              "train/mfu": mfu,
              "train/epoch": epoch,
          }
@@ -538,10 +648,11 @@ diff -ruN '--exclude=__pycache__' base/scripts/base_train.py work/scripts/base_t
          wandb_run.log(log_data)
  
      # state update
-diff -ruN '--exclude=__pycache__' base/scripts/chat_sft.py work/scripts/chat_sft.py
---- base/scripts/chat_sft.py	2026-07-03 22:54:57.000000000 +0000
-+++ work/scripts/chat_sft.py	2026-11-20 18:38:07.523889184 +0000
-@@ -408,6 +408,7 @@
+diff --git a/scripts/chat_sft.py b/scripts/chat_sft.py
+index 86a9e6f..5caddd6 100644
+--- a/scripts/chat_sft.py
++++ b/scripts/chat_sft.py
+@@ -408,6 +408,7 @@ while True:
                      "n_kv_head": model.config.n_kv_head,
                      "n_embd": model.config.n_embd,
                      "window_pattern": model.config.window_pattern,

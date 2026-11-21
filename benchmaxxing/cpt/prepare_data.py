@@ -40,8 +40,39 @@ import pyarrow.parquet as pq
 import yaml
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE))
-from cfgload import load_config  # noqa: E402
+
+
+# ------------------------------------------------------------------------------------------------------------ config
+# YAML with single inheritance (`extends: other.yaml`, relative to the file; dicts merged recursively) and
+# command-line overrides (--set KEY=VALUE: dotted keys, YAML values such as 0.05, true, [scifact], []).
+def _merge(base, over):
+    out = dict(base)
+    for k, v in over.items():
+        out[k] = _merge(out[k], v) if isinstance(v, dict) and isinstance(out.get(k), dict) else v
+    return out
+
+
+def apply_overrides(cfg, items):
+    for item in items or ():
+        key, eq, val = item.partition("=")
+        assert key and eq, f"--set expects KEY=VALUE, got {item!r}"
+        node, parts = cfg, key.split(".")
+        for k in parts[:-1]:
+            if node.get(k) is None:
+                node[k] = {}
+            node = node[k]
+            assert isinstance(node, dict), f"--set {key}: {k} is not a mapping"
+        node[parts[-1]] = yaml.safe_load(val)
+    return cfg
+
+
+def load_config(path, overrides=()):
+    path = Path(path)
+    cfg = yaml.safe_load(path.read_text()) or {}
+    parent = cfg.pop("extends", None)
+    cfg = _merge(load_config(path.parent / parent), cfg) if parent else cfg
+    return apply_overrides(cfg, overrides)
+
 
 
 def log(*a):
@@ -118,7 +149,16 @@ def read_source(src, limit=0):
                 if limit and n >= limit:
                     return
     elif t == "pyserini_index":
-        from pyserini.search.lucene import LuceneSearcher
+        # pyserini builds an OpenAI client when it is imported (pyserini/encode/_openai.py), and recent openai
+        # releases refuse one without a key. Nothing here calls OpenAI: give the import a placeholder key if none is set.
+        placeholder = "OPENAI_API_KEY" not in os.environ
+        if placeholder:
+            os.environ["OPENAI_API_KEY"] = "unused"
+        try:
+            from pyserini.search.lucene import LuceneSearcher
+        finally:
+            if placeholder:
+                del os.environ["OPENAI_API_KEY"]
         searcher = LuceneSearcher.from_prebuilt_index(src["index"])
         for i in range(searcher.num_docs):
             doc = searcher.doc(i)
@@ -138,6 +178,16 @@ def read_source(src, limit=0):
                 return
     else:
         raise ValueError(f"unknown source type {t!r}")
+
+
+def tokenizer_file(cfg):
+    """`tokenizer`: a local tokenizer.json (relative to this folder), or {repo, file[, revision]} on the Hugging Face
+    hub, downloaded once into its cache."""
+    t = cfg["tokenizer"]
+    if isinstance(t, dict):
+        from huggingface_hub import hf_hub_download
+        return hf_hub_download(t["repo"], t["file"], revision=t.get("revision"))
+    return HERE / t
 
 
 class Counter:
@@ -478,7 +528,7 @@ def enabled_sources(cfg):
 
 
 def mix(cfg, work, limit):
-    counter = Counter(HERE / cfg["tokenizer"])
+    counter = Counter(tokenizer_file(cfg))
     out = HERE / (cfg.get("out_dir") or f"data/{cfg['name']}")
     rng = np.random.default_rng(cfg["seed"])
     sources = enabled_sources(cfg)
@@ -593,6 +643,10 @@ def mix(cfg, work, limit):
                 h.update(blk)
         manifest.setdefault("sha256", {})[str(d.relative_to(out))] = h.hexdigest()
     (out / "manifest.json").write_text(json.dumps(manifest, indent=2, default=str))
+    manifest["totals"]["num_iterations_one_pass_at_2^20"] = int(0.95 * total) // 2 ** 20
+    log(f"mix: for one pass at 2^20 tokens per step, set num-iterations: "
+        f"{manifest['totals']['num_iterations_one_pass_at_2^20']} in configs/train.yaml (95% of the tokens)")
+    (out / "manifest.json").write_text(json.dumps(manifest, indent=2, default=str))
     log(f"mix: wrote {len(recs)} training shards + val to {train_dir}; {total:,} tokens, replay share "
         f"{manifest['totals']['replay_share']:.3f} (per shard {min(shares):.3f}-{max(shares):.3f})")
 
@@ -609,7 +663,7 @@ def main():
     if a.limit:
         work = work / f"limit{a.limit}"
     if a.stage in ("all", "corpus"):
-        counter = Counter(HERE / cfg["tokenizer"])
+        counter = Counter(tokenizer_file(cfg))
         for s in enabled_sources(cfg):
             build_corpus_source(s, cfg, counter, work, a.limit)
     if a.stage in ("all", "mix"):

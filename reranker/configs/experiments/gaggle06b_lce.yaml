@@ -1,17 +1,16 @@
 # Gaggle reranker recipe for the 0.6B base model.
 # Engine: nanochat.  Run from reranker/:
-#   baseline, the released 0.6B base model (bash benchmaxxing/cpt/fetch_models.sh 0.6b links it into models/):
-#     bash launch/train.sh ../benchmaxxing/cpt/configs/rerank/gaggle06b_lce.yaml 2 --override model_name=models/<repo name>
-#   a CPT checkpoint (python benchmaxxing/cpt/export_for_reranker.py configs/train.yaml --set model=gaggle06b ...
-#   prints this line):
-#     bash launch/train.sh ../benchmaxxing/cpt/configs/rerank/gaggle06b_lce.yaml 2 \
-#       --override model_name=models/cpt-<run> output_dir=checkpoints/cpt_<run> wandb_run_name=cpt_<run>
+#   bash launch/train.sh configs/experiments/gaggle06b_lce.yaml 2
+# Any nanochat checkpoint dir of the same architecture works as the backbone (model_name), e.g. a continued-pretraining
+# run's dir, whose newest step is used unless model_step says otherwise:
+#   bash launch/train.sh configs/experiments/gaggle06b_lce.yaml 2 --override model_name=<run dir> \
+#     output_dir=checkpoints/<name> wandb_run_name=<name>
 #
 # THE 0.6B MODEL IS NOT RELEASED YET: model_name below is a placeholder until it is.
 #
-# This is the paper's run-1 recipe (reranker/configs/sft/run1_seed17.yaml) with two changes for a smaller backbone:
-#   * nanochat_src: the patched nanochat in benchmaxxing/cpt/third_party/nanochat (bash benchmaxxing/cpt/setup.sh),
-#     which also loads models whose value embeddings are not on alternate layers (`ve_every` other than 2);
+# This is the paper's run-1 recipe (configs/sft/run1_seed17.yaml) with two changes for a smaller backbone:
+#   * nanochat_src: the patched nanochat of pretrain/continue (bash pretrain/continue/setup.sh), which also loads
+#     models whose value embeddings are not on alternate layers (`ve_every` other than 2);
 #   * max_tokens_per_batch is a cap (120,000) instead of run 1's pinned 39,312: a smaller model leaves more memory for
 #     activations, so the trainer sizes each GPU's micro-batches to what fits. The optimisation is the same (128 query
 #     groups per step); only the number of micro-batches per step changes.
@@ -21,7 +20,7 @@
 # ---- model, prompt, data -----------------------------------------------------------------
 backbone_impl: upstream     # src/modeling_nanochat_upstream.py: nanochat's own GPT class
 model_name: models/PLACEHOLDER-gaggle-0.6b   # the released 0.6B checkpoint dir: model_<step>.pt + meta + tokenizer.json
-nanochat_src: ../benchmaxxing/cpt/third_party/nanochat                 # 92d63d4 + nanochat_cpt.patch (ve_every)
+nanochat_src: ../pretrain/continue/third_party/nanochat           # 92d63d4 + nanochat_continue.patch (ve_every)
 prompt: nochat              # "<|bos|>Query: {query}\nPassage: {passage}\nRelevant:"  score = logit(" true") - logit(" false")
 train_parquet: data/rlhn250k_prepared_climbmix_lens/train.parquet   # RLHN-250K (data_prep/prepare_data.sh)
 output_dir: checkpoints/gaggle06b_lce

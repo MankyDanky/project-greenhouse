@@ -61,21 +61,37 @@ def _load_upstream(nanochat_src, dtype):
     return GPT, GPTConfig, norm
 
 
+def checkpoint_files(model_dir, step=None):
+    """(step, model path, meta path) of a nanochat checkpoint dir: `step` if given, else the newest step that has
+    both model_<step>.pt and meta_<step>.json. A released checkpoint dir holds one step; a training run's dir (e.g. a
+    continued-pretraining run, which also carries its tokenizer) holds its last few, plus optimizer shards."""
+    found = {}
+    for path in glob.glob(os.path.join(model_dir, "model_*.pt")):
+        tail = os.path.basename(path)[len("model_"):-len(".pt")]
+        meta = os.path.join(model_dir, f"meta_{tail}.json")
+        if tail.isdigit() and os.path.exists(meta):
+            found[int(tail)] = (path, meta)
+    assert found, f"no model_<step>.pt with its meta_<step>.json in {model_dir}"
+    chosen = max(found) if step is None else int(step)
+    assert chosen in found, f"step {step} not in {model_dir} (it has {sorted(found)})"
+    return (chosen, *found[chosen])
+
+
 class UpstreamNanochatReranker(nn.Module):
-    """model_dir holds an upstream checkpoint: model_<step>.pt + meta_<step>.json (+ tokenizer.json)."""
+    """model_dir holds an upstream checkpoint: model_<step>.pt + meta_<step>.json (+ tokenizer.json). With several
+    steps (a training run's dir), `step` picks one; the default is the newest."""
 
     def __init__(self, model_dir, yes_id, no_id, dtype=torch.float32, nanochat_src=None,
                  attn_implementation=None, bidirectional=False, keep_lm_head=False,
-                 upstream_precision=False, readout_offset=0, score_mode="lm_rows"):
+                 upstream_precision=False, readout_offset=0, score_mode="lm_rows", step=None):
         super().__init__()
         assert dtype in _DTYPE_ENV, f"dtype must be fp32 (training) or bf16 (evaluation), got {dtype}"
         nanochat_src = nanochat_src or os.environ.get("NANOCHAT_SRC")
         assert nanochat_src, "set nanochat_src (or NANOCHAT_SRC) to a nanochat checkout @ 92d63d4"
         GPT, GPTConfig, self._norm = _load_upstream(nanochat_src, dtype)
 
-        meta_path = glob.glob(os.path.join(model_dir, "meta_*.json"))
-        ckpt_path = glob.glob(os.path.join(model_dir, "model_*.pt"))
-        assert len(meta_path) == 1 and len(ckpt_path) == 1, (meta_path, ckpt_path)
+        self.step, ckpt, meta = checkpoint_files(model_dir, step)
+        meta_path, ckpt_path = [meta], [ckpt]
         mc = json.load(open(meta_path[0]))["model_config"]
         self.meta = mc
         # ve_every (value embeddings on every ve_every-th layer, counted back from the last) exists only in

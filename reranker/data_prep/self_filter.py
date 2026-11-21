@@ -60,7 +60,7 @@ def do_score(a):
     if cfg.get("backbone_impl", "hf") == "upstream":
         from modeling_nanochat_upstream import UpstreamNanochatReranker
         m = UpstreamNanochatReranker(cfg["model_name"], yes_id=yes_id, no_id=no_id, dtype=dtype,
-                                     nanochat_src=cfg.get("nanochat_src"))
+                                     nanochat_src=cfg.get("nanochat_src"), step=cfg.get("model_step"))
     else:
         from modeling_nanochat_rr import NanochatReranker
         m = NanochatReranker(cfg["model_name"], yes_id=yes_id, no_id=no_id, dtype=dtype,

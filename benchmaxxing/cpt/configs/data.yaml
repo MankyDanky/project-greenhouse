@@ -6,7 +6,7 @@
 name: ir_mix
 seed: 17
 work_dir: work/ir                 # per-source caches and the replay stream, shared by every mix
-tokenizer: models/gaggle-nanochat-pretrained-climbmix-20260924/tokenizer.json   # both Gaggle models share it
+tokenizer: {repo: castorini/gaggle-nanochat-pretrained-climbmix-20260924, file: tokenizer.json}   # the Gaggle models share it
 
 format:
   title_separator: "\n\n"         # documents become `title\n\ntext` (or the text alone)
@@ -102,8 +102,7 @@ replay:
     repo: karpathy/climbmix-400b-shuffle
     file_pattern: "shard_{:05d}.parquet"
     shards: [0, 5899]             # drawn in a seeded random order; the 3B model trained on all of these (its data
-                                  # loaders were past shard 5,949 at release; train.py --check warns for a model that
-                                  # stopped earlier)
+                                  # loaders were past shard 5,949 at release: dataloader_state_dict in its meta)
   heldout_shard: 6542             # never trained on by any Gaggle model: the "forgetting" measurement
   heldout_docs: 4000
 

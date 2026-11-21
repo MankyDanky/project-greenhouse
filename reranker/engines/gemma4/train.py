@@ -101,7 +101,7 @@ def main():
         # sliding windows -- architecture the HF NanoChat port cannot represent
         from modeling_nanochat_upstream import UpstreamNanochatReranker
         model = UpstreamNanochatReranker(cfg["model_name"], yes_id=yes_id, no_id=no_id, dtype=dtype,
-                                         nanochat_src=cfg.get("nanochat_src"))
+                                         nanochat_src=cfg.get("nanochat_src"), step=cfg.get("model_step"))
     else:
         model = NanochatReranker(cfg["model_name"], yes_id=yes_id, no_id=no_id, dtype=dtype,
                                  attn_implementation=cfg["attn_implementation"], model_revision=cfg.get("model_revision"))

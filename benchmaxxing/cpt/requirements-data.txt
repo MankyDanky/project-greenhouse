@@ -5,4 +5,4 @@ pyarrow
 tokenizers
 huggingface_hub
 ir_datasets
-pyserini
+pyserini==1.5.0     # the version prepare_data.py is tested with

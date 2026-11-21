@@ -2,8 +2,7 @@
 
 **Status (2026-11-20):** the plan, data preparation, training, evaluation and export scripts are ready. Data
 preparation and the training pipeline pass CPU smoke tests (`tests/`). No GPU run has been made yet. The 0.6B
-Gaggle model is not released yet: its entry in `configs/train.yaml` carries placeholders (repository, step, original
-weight decay) that `train.py` refuses to run with. The 3B run can start now.
+Gaggle model is not released yet; its values go into `configs/train.yaml` once it is. The 3B run can start now.
 
 **Question.** If a Gaggle base model keeps pre-training on the raw documents of the collections the reranker is
 evaluated on, does the same reranker fine-tuning then score higher?
@@ -121,8 +120,8 @@ None of these works uses Muon, which trains the Gaggle models' matrix weights.
   end because the reranker needs general knowledge (BEIR rewards it), so forgetting costs the final metric, not just
   a language-modelling benchmark.
 - **Ours is true replay.** The replay comes from ClimbMix shards the 3B model was trained on (shards 0–5899; its
-  data loaders were past shard 5,949 at release). `train.py --check` reads where a starting model's data loader
-  stopped and warns if part of the replay range is text it never saw (check this for the 0.6B model on release).
+  data loaders were past shard 5,949 at release). For the 0.6B model, check `dataloader_state_dict` in its
+  `meta_<step>.json` on release: replay should come from shards it was trained on.
 - **The cost is modest.** 25% replay means a third more tokens than none.
 - **Constant ratio, interleaved document by document, fixed when the data is built.** Every stretch of the run sees
   the same share, so a run stopped early or preempted is still the same experiment. The trainer only reads shards in
@@ -143,19 +142,20 @@ None of these works uses Muon, which trains the Gaggle models' matrix weights.
 | Precision | FP8 matmuls, as in pre-training (`fp8: false` on GPUs older than H100) | |
 | Optimizer state | fresh | The released checkpoints carry no optimizer state. |
 
-`train.py` derives all of it from the checkpoint's `meta_<step>.json` and the YAML (`train.py --check` prints the
-result). nanochat's own batch-size and horizon rescaling is switched off with `--literal-hparams`.
+All of it is in `configs/train.yaml`, as flags of the shared trainer (nanochat's own, in `pretrain/continue/`). The learning rates are written out (the
+original run's peaks × 0.1), and nanochat's own batch-size and horizon rescaling is switched off with
+`literal-hparams`.
 
 ---
 
 ## 6. The run
 
-For each model (3B now, 0.6B once released; `model:` in `configs/train.yaml`):
+For each model (3B now, 0.6B once released), with the repository's shared tools (README.md has the commands):
 1. `prepare_data.py configs/data.yaml`: the mix (once, shared by both models).
-2. `train.py configs/train.yaml`: CPT.
-3. `evaluate.py configs/train.yaml --init --core` and `evaluate.py configs/train.yaml --core`: the language model
+2. The continued-pretraining trainer of `pretrain/continue/` with `configs/train.yaml`: CPT.
+3. `scripts/base_eval.py --checkpoint-dir` (bpb on the held-out, seen and replay sets; CORE): the language model
    before and after.
-4. `export_for_reranker.py configs/train.yaml`, then the reranker fine-tuning and evaluation it prints.
+4. The paper's reranker fine-tuning and evaluation, with the run's checkpoint directory as the backbone.
 
 **Baselines.** For the 3B model, the paper's run 1 (`castorini/gaggle-reranker-run1-20260926`; DL 0.641, BEIR
 0.544). For the 0.6B model, the reranker on the untouched model has to be trained once
@@ -177,8 +177,8 @@ model.
 ## 7. What to report
 
 For each model:
-- **From `results/<run>/{init,step_N}.json`:** held-out corpus bpb, seen-corpus bpb and their difference
-  (memorisation), held-out ClimbMix bpb, and CORE, before and after CPT.
+- **From `scripts/base_eval.py`:** held-out corpus bpb, seen-corpus bpb and their difference (memorisation),
+  held-out ClimbMix bpb, and CORE, before and after CPT.
 - **From `eval/results/`:** nDCG@10 per collection, the DL mean and the BEIR mean, next to the baseline.
 
 Label every reranker number trained from a CPT model as corpus-aware, except, under `exclude_ood`, the four
