@@ -1,6 +1,7 @@
 #!/bin/bash
 # Build the training parquets every paper row reads, and check them against the SHA256 of the files the runs
-# used (data_prep/SHA256SUMS). CPU only; run from reranker/ after `bash data_prep/fetch_models.sh gaggle`.
+# used (data_prep/SHA256SUMS). CPU only; run from reranker/ after `bash data_prep/fetch_models.sh gaggle` (or
+# gaggle-0.6b: every Gaggle model ships the same tokenizer.json, byte for byte).
 #
 #   bash data_prep/prepare_data.sh rlhn250k        # Sec. 5 and most of Sec. 6     (~1 h with 16 processes)
 #   bash data_prep/prepare_data.sh rlhn680k        # Sec. 6.2 RLHN-680K
@@ -14,10 +15,14 @@
 # The self-filtered sets of Sec. 6.4 are built from run 1's checkpoint: see data_prep/self_score.sh.
 set -euo pipefail
 PROCS=${PROCS:-16}
-TOK=models/gaggle-nanochat-pretrained-climbmix-20260924
+# The 32,768-token Gaggle tokenizer, from whichever Gaggle model has been fetched (their tokenizer.json files are identical).
+TOK=""
+for d in models/gaggle-nanochat-pretrained-climbmix-20260924 models/gaggle-nanochat-0.6b-pretrained-climbmix-20261121; do
+  [ -z "$TOK" ] && [ -f $d/tokenizer.json ] && TOK=$d
+done
 export TOKENIZERS_PARALLELISM=false
 mkdir -p data
-need_tok() { [ -f $TOK/tokenizer.json ] || { echo "run: bash data_prep/fetch_models.sh gaggle"; exit 1; }; }
+need_tok() { [ -n "$TOK" ] || { echo "run: bash data_prep/fetch_models.sh gaggle (or gaggle-0.6b)"; exit 1; }; }
 check() {  # $1 = data/<name>
   local want; want=$(awk -v n="$(basename "$1")" '$2 == n {print $1}' data_prep/SHA256SUMS)
   local got; got=$(sha256sum "$1/train.parquet" | cut -d' ' -f1)

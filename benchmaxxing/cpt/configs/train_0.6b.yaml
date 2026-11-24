@@ -1,0 +1,57 @@
+# Continued pretraining of the 0.6B Gaggle base model on the mix built from configs/data.yaml. The trainer is the
+# repository's continued-pretraining trainer (pretrain/continue: nanochat's scripts/base_train.py, patched); every key
+# is one of its flags, and flags given on the command line override the file. Run from benchmaxxing/cpt/ (relative
+# paths below are relative to it):
+#
+#   NANOCHAT_BASE_DIR=work/nanochat_base PYTHONPATH=../../pretrain/continue/third_party/nanochat \
+#     torchrun --standalone --nproc_per_node=8 -m scripts.base_train --config configs/train_0.6b.yaml
+#
+# Checkpoints, with the model's tokenizer, go to $NANOCHAT_BASE_DIR/base_checkpoints/<model-tag>/; rerunning the same
+# command resumes the run.
+
+# start from the released checkpoint (from reranker/: bash data_prep/fetch_models.sh gaggle-0.6b), fresh optimizer; its
+# tokenizer is used (the same 32,768-token tokenizer as the 3B model)
+init-from-dir: ../../reranker/models/gaggle-nanochat-0.6b-pretrained-climbmix-20261121
+init-from-step: 229067
+data-dir: data/ir_mix/train            # the mix (prepare_data.py configs/data.yaml)
+model-tag: gaggle06b_ir_mix
+auto-resume: true
+
+# architecture: the checkpoint's (d28: 28 layers x 1024, 8 heads of 128, value embeddings on every 7th layer); checked
+# against its meta when it is loaded. Width = depth x aspect-ratio rounded up to a multiple of head-dim: 28 x 36 -> 1024
+depth: 28
+aspect-ratio: 36
+ve-every: 7
+head-dim: 128
+window-pattern: SSSL
+max-seq-len: 2048
+
+# batch and length: one pass over the mix. prepare_data.py prints num-iterations for the mix it built
+# (95% of its tokens / 2^20; the value below is for the default mix, ~4.4B tokens)
+total-batch-size: 1048576
+device-batch-size: 16                  # sequences per GPU per micro-step, as in pre-training (8 GPUs)
+num-iterations: 3960
+fp8: true                              # FP8 matmuls as in pre-training (H100 or newer)
+
+# learning rate: 0.1 x the original run's peak for every parameter group (its 0.02 / 0.3 / 0.008 / 0.5 times its
+# batch factor sqrt(1/2), the same base values as the 3B run; the model scales the AdamW groups for its width,
+# 1/sqrt(1024/768), as it did in pre-training), used as given (literal-hparams: no rescaling for batch size or horizon); 1% warmup,
+# constant, then linear decay to 0 over the second half
+literal-hparams: true
+matrix-lr: 0.00141421
+embedding-lr: 0.0212132
+unembedding-lr: 0.00056569
+scalar-lr: 0.0353553
+warmup-steps: 40
+warmdown-ratio: 0.5
+final-lr-frac: 0.0
+weight-decay: 0.112984                 # the original run's Muon weight-decay amplitude at batch 1M, held at 2M (cosine to 0 over this run)
+# weight-decay: 0                      # a pure continuation, without Muon weight decay
+
+# evaluation and checkpoints
+eval-every: 250                        # val bpb on the mix's held-out shard
+eval-tokens: 2097152
+core-metric-every: -1                  # CORE afterwards, with scripts/base_eval.py --checkpoint-dir
+sample-every: -1
+save-every: 500
+keep-checkpoints: 2

@@ -2,7 +2,7 @@
 
 | Path | Source | Licence |
 |---|---|---|
-| `reranker/third_party/nanochat-92d63d4/` | [karpathy/nanochat](https://github.com/karpathy/nanochat) at `92d63d4`, unmodified (model code the rerankers load) | MIT (`LICENSE` inside) |
+| `reranker/third_party/nanochat-92d63d4/` | [karpathy/nanochat](https://github.com/karpathy/nanochat) at `92d63d4` (model code the rerankers load), with the 15-line value-embedding spacing patch next to it (`nanochat-92d63d4-ve_every.patch`; no change for the 3.3B model) | MIT (`LICENSE` inside) |
 | `pretrain/nanochat/` | nanochat `92d63d4` with the stage-boundary checkpoint patch and a shard-index hook, described in `pretrain/README.md` | MIT (`LICENSE` inside) |
 | `pretrain/mntp/upstream_snapshot_bidir/` | nanochat `92d63d4` with bidirectional sliding-window attention | MIT (`LICENSE` inside) |
 | `pretrain/continue/nanochat_continue.patch` | a patch to nanochat `92d63d4`, which `pretrain/continue/setup.sh` clones (not vendored) | MIT |

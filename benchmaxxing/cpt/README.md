@@ -19,6 +19,7 @@ Run every command from this folder unless it says otherwise; paths in the config
 | `prepare_data.py` | builds the mix: corpus documents + replay, as nanochat shards, plus three evaluation sets |
 | `configs/data.yaml` | the data config |
 | `configs/train.yaml` | the run's trainer flags (3B model) |
+| `configs/train_0.6b.yaml` | the same for the 0.6B model |
 | `requirements-data.txt` | the data-preparation environment (plus Java 21 for pyserini) |
 | `tests/smoke_data.sh` | CPU smoke test of data preparation |
 
@@ -30,6 +31,7 @@ Generated, not committed: `work/` (caches, checkpoints) and `data/` (mixes).
 python -m venv .venv-data && .venv-data/bin/pip install -r requirements-data.txt   # + Java 21 on PATH (pyserini)
 bash ../../pretrain/continue/setup.sh --env                    # the trainer and its environment
 (cd ../../reranker && bash data_prep/fetch_models.sh gaggle)   # the 3B base model (10.6 GB)
+(cd ../../reranker && bash data_prep/fetch_models.sh gaggle-0.6b)   # the 0.6B base model (only for its run)
 PYTHON=.venv-data/bin/python bash tests/smoke_data.sh          # CPU check of the data preparation
 ```
 
@@ -100,7 +102,8 @@ NANOCHAT_BASE_DIR=work/nanochat_base PYTHONPATH=../../pretrain/continue/third_pa
 
 The run starts from the released 3B checkpoint with a fresh optimizer and trains one pass over the mix (settings in
 PLAN.md, section 5). Its checkpoints, with the model's tokenizer, go to
-`work/nanochat_base/base_checkpoints/gaggle3b_ir_mix/`. Rerunning the command resumes the run.
+`work/nanochat_base/base_checkpoints/gaggle3b_ir_mix/`. Rerunning the command resumes the run. For the 0.6B model,
+use `--config configs/train_0.6b.yaml`; its checkpoints go to `work/nanochat_base/base_checkpoints/gaggle06b_ir_mix/`.
 
 ## 4. Evaluate the language model
 
@@ -136,5 +139,19 @@ python eval/report.py cpt_gaggle3b_ir_mix
 ```
 
 The reranker needs its fine-tuning data (`reranker/data_prep/`) and the BM25 candidates (`eval/candidates/`); see
-the repository's [ONBOARDING.md](../../ONBOARDING.md). The 0.6B model, once released, uses
-`reranker/configs/experiments/gaggle06b_lce.yaml`.
+the repository's [ONBOARDING.md](../../ONBOARDING.md).
+
+For the 0.6B model, the recipe of its released reranker (the baseline is `castorini/gaggle-reranker-0.6b-20261122`;
+DL 0.634, BEIR 0.533), with its pinned budget of 120,000 tokens on one GPU. That takes about 131 GiB, so an H200
+(141 GB) or larger; on a smaller GPU the trainer stops rather than repack. Dropping the pinning
+(`--override pack_world=<n_gpus> require_exact_budget=false`) changes the batches, and the baseline then has to be
+trained again the same way for the comparison:
+
+```bash
+cd reranker
+bash launch/train.sh configs/experiments/gaggle06b_lce.yaml 1 \
+  --override model_name=../benchmaxxing/cpt/work/nanochat_base/base_checkpoints/gaggle06b_ir_mix \
+  output_dir=checkpoints/cpt_gaggle06b_ir_mix wandb_run_name=cpt_gaggle06b_ir_mix
+cd .. && bash eval/run_eval.sh ours reranker/checkpoints/cpt_gaggle06b_ir_mix/ckpt_final.pt cpt_gaggle06b_ir_mix
+python eval/report.py cpt_gaggle06b_ir_mix
+```
