@@ -1,10 +1,12 @@
 # Iteration 1: continued pretraining on the evaluation corpora
 
-**Status (2026-11-20):** the plan, data preparation, training, evaluation and export scripts are ready. Data
-preparation and the training pipeline pass CPU smoke tests (`tests/`). No GPU run has been made yet. The 3B run can start now.
+**Status (2026-11-24):** the plan, data preparation, training, evaluation and export scripts are ready, and data
+preparation and the training pipeline pass CPU smoke tests (`tests/`).
 
-**Update (2026-11-23):** the 0.6B Gaggle model is released ([`castorini/gaggle-nanochat-0.6b-pretrained-climbmix-20261121`](https://huggingface.co/castorini/gaggle-nanochat-0.6b-pretrained-climbmix-20261121)), with its
-reranker baseline ([`castorini/gaggle-reranker-0.6b-20261122`](https://huggingface.co/castorini/gaggle-reranker-0.6b-20261122)). Its run is `configs/train_0.6b.yaml`, and it can start now too.
+- **3B:** the CPT run is done and its checkpoint is available. The reranker fine-tuning on it (section 6) is running.
+- **0.6B:** the CPT run can start now: `configs/train_0.6b.yaml`, from the released
+  [`castorini/gaggle-nanochat-0.6b-pretrained-climbmix-20261121`](https://huggingface.co/castorini/gaggle-nanochat-0.6b-pretrained-climbmix-20261121), with
+  [`castorini/gaggle-reranker-0.6b-20261122`](https://huggingface.co/castorini/gaggle-reranker-0.6b-20261122) as its reranker baseline.
 
 **Question.** If a Gaggle base model keeps pre-training on the raw documents of the collections the reranker is
 evaluated on, does the same reranker fine-tuning then score higher?
