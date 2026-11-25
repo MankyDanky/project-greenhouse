@@ -1,4 +1,5 @@
-"""Configuration for the Gaggle nanochat base model (karpathy/nanochat @ 92d63d4, depth 34).
+"""Configuration for the Gaggle nanochat base models (karpathy/nanochat @ 92d63d4: the released depth-34 model,
+and other shapes of the same architecture, e.g. depth 32 x 1152 with value embeddings on every 4th layer).
 
 The architecture is nanochat's own, not any stock `transformers` model: relu^2 MLPs, parameter-free RMSNorm,
 QK-norm with a fixed 1.2 scale, per-layer sliding windows, ResFormer value embeddings with per-head gates,
@@ -32,6 +33,7 @@ class GaggleConfig(PretrainedConfig):
         n_embd: int = 2176,
         sequence_len: int = 2048,
         window_pattern: str = "SSSL",
+        ve_every: int = 2,              # value embeddings on every ve_every-th layer, counted back from the last
         rope_theta: float = 100000.0,
         qk_scale: float = 1.2,
         mlp_ratio: int = 4,
@@ -52,6 +54,8 @@ class GaggleConfig(PretrainedConfig):
         self.n_embd = n_embd
         self.sequence_len = sequence_len
         self.window_pattern = window_pattern
+        assert int(ve_every) >= 1, f"ve_every must be >= 1, got {ve_every}"
+        self.ve_every = int(ve_every)
         self.rope_theta = rope_theta
         self.qk_scale = qk_scale
         self.mlp_ratio = mlp_ratio
@@ -85,5 +89,7 @@ class GaggleConfig(PretrainedConfig):
         return sizes
 
     def has_value_embedding(self, layer_idx: int) -> bool:
-        """ResFormer value embeddings sit on alternating layers; the last layer always has one."""
-        return layer_idx % 2 == (self.n_layer - 1) % 2
+        """ResFormer value embeddings sit on every `ve_every`-th layer counting back from the last, which always has
+        one: nanochat's has_ve(). ve_every = 2 (the default, and upstream nanochat's only option) is the alternating
+        rule layer_idx % 2 == (n_layer - 1) % 2, so configs written before ve_every existed keep their layer set."""
+        return (self.n_layer - 1 - layer_idx) % self.ve_every == 0

@@ -408,6 +408,7 @@ while True:
                     "n_kv_head": model.config.n_kv_head,
                     "n_embd": model.config.n_embd,
                     "window_pattern": model.config.window_pattern,
+                    **({"ve_every": model.config.ve_every} if model.config.ve_every != 2 else {}), # else an SFT of a ve_every != 2 base rebuilds with 2
                 },
                 "user_config": user_config, # inputs to the training script
             },

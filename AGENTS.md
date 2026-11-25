@@ -9,8 +9,10 @@ New work goes in alongside it, with its own configs and records; nothing may cha
   them. New experiments go in `reranker/configs/experiments/`.
 - `paper/manifest.yaml`, `paper/results/recorded.json`, `reranker/data_prep/SHA256SUMS`, `eval/candidates/DIGESTS`
   and `eval/candidates/runs/` are records of the original runs. Do not regenerate them to make a check pass.
-- `reranker/third_party/nanochat-92d63d4/` (upstream, plus the `ve_every` patch kept next to it), `pretrain/nanochat/`
-  and `pretrain/mntp/upstream_snapshot_bidir/` are pinned snapshots. Do not edit them.
+- `reranker/third_party/nanochat-92d63d4/` (upstream, plus the `ve_every` patch kept next to it) and
+  `pretrain/mntp/upstream_snapshot_bidir/` are pinned snapshots, and `pretrain/d34_original_run/` is the 3.3B run's
+  code as it ran. Do not edit them. `pretrain/nanochat/` is the pre-training trainer of all three backbones: change it
+  only with its tests (`pretrain/tests/`) passing, and list the change in `pretrain/README.md`.
 
 ## Benchmaxxing
 

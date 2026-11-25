@@ -1,7 +1,6 @@
 {
  "created_at": "2026-09-13",
  "experiment": "20260913_lr_batch",
- "host": "killarney.alliancecan.ca",
  "checkpoint_source": "stage-1 checkpoint at step 136316 (D34_CHECKPOINT_DIR)",
  "source_step": 136316,
  "source_tokens": 92537618432,

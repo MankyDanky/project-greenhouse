@@ -1,0 +1,26 @@
+# The 0.9B Gaggle backbone, castorini/gaggle-nanochat-0.9b-pretrained-climbmix-20261105: the d34 recipe on a deeper,
+# narrower sub-1B shape (chosen by a 7B-token shape sweep). These are the settings of the released run (4 x H200,
+# 2026-10-24 to 11-05); the released checkpoint is its final one, step 229,067.
+run: d32x1152-climbmix
+attention: fa3
+gpus: 4                             # the run: one node of 4 x H200 NVL
+train_args:
+  depth: 32                         # 32 layers x width 1,152 (aspect ratio 36), 9 heads of 128
+  aspect-ratio: 36
+  ve-every: 4                       # value embeddings on every 4th layer counting back from the last: 8 tables
+  fp8: true
+  fp8-recipe: tensorwise
+  # As the d34 recipe, except that the 2M batch starts one step later (step 136,317), so there is no half batch at
+  # the end; the learning-rate schedule differs from the d34 run's by at most 5.3e-6 (README).
+  batch-schedule: "262144:10e9,524288:30.4e9,1048576:92537823232,2097152"
+  target-tokens: 287049515008
+  warmdown-ratio: 0.5528
+  weight-decay-batch-cap: 1048576
+  matrix-lr: 0.02
+  device-batch-size: 32             # 4 GPUs x 32 x 2048 = 262,144 tokens per micro-step
+  eval-every: 1000
+  core-metric-every: 5000
+  sample-every: -1
+  save-every: 500
+  keep-checkpoints: 2
+  log-every: 50

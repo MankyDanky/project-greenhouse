@@ -6,7 +6,7 @@
 #   bash data_prep/fetch_models.sh gaggle gaggle-bidir    # + the MNTP model: Sec. 6.3 MNTP rows
 #   bash data_prep/fetch_models.sh gemma4 minicpm5        # Sec. 6.1 rows trained by the multi engine
 #   bash data_prep/fetch_models.sh nanochat-d34           # Sec. 6.1 nanochat-d34 row (needs a conversion, see below)
-#   bash data_prep/fetch_models.sh gaggle-0.6b            # the 0.6B Gaggle backbone (configs/experiments/gaggle06b_lce.yaml)
+#   bash data_prep/fetch_models.sh gaggle-0.9b gaggle-0.6b   # the 0.9B and 0.6B Gaggle backbones (configs/experiments/)
 #
 # The native Gemma-4-E2B and Qwen3.5-4B-Base rows (configs/backbones/*.json) load straight from the Hub at the
 # revision pinned in their config, so they need nothing here.
@@ -14,6 +14,7 @@ set -euo pipefail
 mkdir -p models
 G=gaggle-nanochat-pretrained-climbmix-20260924
 B=gaggle-nanochat-pretrained-climbmix-bidirectional-20260929
+G09=gaggle-nanochat-0.9b-pretrained-climbmix-20261105
 G06=gaggle-nanochat-0.6b-pretrained-climbmix-20261121
 
 verify() {  # check every file listed in the repo's SHA256SUMS that we downloaded
@@ -35,11 +36,12 @@ for m in "${@:-gaggle}"; do
         SHA256SUMS --local-dir models/$B
       cp models/$G/tokenizer.json models/$G/tokenizer_config.json models/$B/
       verify $B ;;
-    gaggle-0.6b)
-      # The 0.6B Gaggle backbone: the final step (229,067) of its 287B-token ClimbMix pass, with the same tokenizer.
-      hf download castorini/$G06 model_229067.pt meta_229067.json tokenizer.json tokenizer_config.json \
-        tokenizer/tokenizer.pkl tokenizer/token_bytes.pt SHA256SUMS --local-dir models/$G06
-      verify $G06 ;;
+    gaggle-0.9b|gaggle-0.6b)
+      # The smaller Gaggle backbones: the final step (229,067) of each 287B-token ClimbMix pass, with the same tokenizer.
+      R=$G09; [ "$m" = gaggle-0.6b ] && R=$G06
+      hf download castorini/$R model_229067.pt meta_229067.json tokenizer.json tokenizer_config.json \
+        tokenizer/tokenizer.pkl tokenizer/token_bytes.pt SHA256SUMS --local-dir models/$R
+      verify $R ;;
     gemma4)   hf download google/gemma-4-E2B        --revision d29ff6b45f081a49ee2733a859c9c9c2d95d1a6f --local-dir models/gemma-4-e2b ;;
     qwen35)   hf download Qwen/Qwen3.5-4B-Base      --revision 1001bb4d826a52d1f399e183466143f4da7b741b --local-dir models/qwen3.5-4b-base ;;
     minicpm5) hf download openbmb/MiniCPM5-2B-Base  --revision 96a57cd572a02506b4500f54427dca24970c1bac --local-dir models/minicpm5-2b-base ;;

@@ -27,7 +27,7 @@ for r in json.load(open('../../records/production_code_manifest.json'))['files']
     print({True: 'same   ', False: 'DIFFERS', None: 'absent '}[ok], r['path'])"
 ```
 
-Original placement: stages 1 and 3 on one 8xH100 node of the Alliance Killarney cluster in 24-hour legs; stage 2's
-1,024 updates on two H200 GPUs (watgpu, University of Waterloo) through an adapter that replays the eight ranks' data
+Original placement: stages 1 and 3 on one 8xH100 node in 24-hour legs; stage 2's
+1,024 updates on two H200 GPUs through an adapter that replays the eight ranks' data
 streams and gradient accumulation exactly, then exported to the same eight-rank checkpoint format that
 `../stage2_2m_continuation/run_branch.sbatch` writes.

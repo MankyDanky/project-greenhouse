@@ -6,6 +6,8 @@ nanochat key `k` becomes `model.k`, and `lm_head.weight` stays `lm_head.weight`.
 exact inverse, and the original .pt can be rebuilt bit for bit.
 
     python convert_nanochat_to_hf.py --ckpt DIR --step 227158 --out OUT
+Every shape field of the checkpoint's model_config (including ve_every, the value-embedding spacing; absent = 2,
+upstream's alternating layers) goes into config.json, and the conversion refuses any key/shape mismatch.
 """
 import argparse, hashlib, json, os, pickle, shutil, sys
 
@@ -23,7 +25,7 @@ def rename(k):
     return k if k == "lm_head.weight" else "model." + k
 
 
-def build_tokenizer(tok_pkl, out_dir):
+def build_tokenizer(tok_pkl, out_dir, model_max_length=2048):
     """tokenizer.pkl (a pickled tiktoken Encoding) -> tokenizer.json, plus a post-processor that prepends <|bos|>
     whenever special tokens are requested, which is how nanochat encodes a document."""
     from transformers.integrations.tiktoken import convert_tiktoken_to_fast
@@ -44,7 +46,7 @@ def build_tokenizer(tok_pkl, out_dir):
     json.dump(tj, open(os.path.join(out_dir, "tokenizer.json"), "w"), ensure_ascii=False, indent=1)
     json.dump({
         "tokenizer_class": "PreTrainedTokenizerFast",
-        "model_max_length": 2048,
+        "model_max_length": model_max_length,
         "bos_token": BOS,
         "eos_token": BOS,
         "pad_token": "<|assistant_end|>",
@@ -75,9 +77,15 @@ def main():
     sd = torch.load(os.path.join(a.ckpt, f"model_{a.step}.pt"), map_location="cpu", weights_only=True)
     sd = {rename(k): v.contiguous() for k, v in sd.items()}
 
+    known = {"vocab_size", "n_layer", "n_head", "n_kv_head", "n_embd", "sequence_len", "window_pattern", "ve_every"}
+    assert set(mc) <= known, f"model_config has fields this port does not model: {set(mc) - known}"
     cfg = GaggleConfig(vocab_size=mc["vocab_size"], n_layer=mc["n_layer"], n_head=mc["n_head"],
                        n_kv_head=mc["n_kv_head"], n_embd=mc["n_embd"], sequence_len=mc["sequence_len"],
-                       window_pattern=mc.get("window_pattern", "SSSL"))
+                       window_pattern=mc.get("window_pattern", "SSSL"), ve_every=mc.get("ve_every", 2))
+    # the special-token ids in the config must be the tokenizer's own
+    enc = pickle.load(open(os.path.join(a.ckpt, "tokenizer", "tokenizer.pkl"), "rb"))
+    for name, tid in (("<|bos|>", cfg.bos_token_id), ("<|assistant_end|>", cfg.pad_token_id)):
+        assert enc.encode_single_token(name) == tid, f"{name} is id {enc.encode_single_token(name)}, config says {tid}"
     cfg.architectures = ["GaggleForCausalLM"]
     cfg.auto_map = {"AutoConfig": "configuration_gaggle.GaggleConfig",
                     "AutoModel": "modeling_gaggle.GaggleModel",
@@ -111,12 +119,14 @@ def main():
               open(os.path.join(a.out, "generation_config.json"), "w"), indent=1)
     for f in ("configuration_gaggle.py", "modeling_gaggle.py"):
         shutil.copy(os.path.join(HERE, f), os.path.join(a.out, f))
-    build_tokenizer(os.path.join(a.ckpt, "tokenizer", "tokenizer.pkl"), a.out)
+    build_tokenizer(os.path.join(a.ckpt, "tokenizer", "tokenizer.pkl"), a.out, model_max_length=cfg.sequence_len)
 
     dtypes = {}
     for v in sd.values():
         dtypes[str(v.dtype)] = dtypes.get(str(v.dtype), 0) + v.numel()
-    print(json.dumps({"out": a.out, "tensors": len(sd), "params": sum(v.numel() for v in sd.values()),
+    print(json.dumps({"out": a.out, "n_layer": cfg.n_layer, "n_embd": cfg.n_embd, "ve_every": cfg.ve_every,
+                      "value_embedding_layers": [i for i in range(cfg.n_layer) if cfg.has_value_embedding(i)],
+                      "tensors": len(sd), "params": sum(v.numel() for v in sd.values()),
                       "params_by_dtype": dtypes, "shards": list(split.filename_to_tensors)}, indent=1))
 
 

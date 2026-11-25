@@ -42,6 +42,12 @@ table to its configs, commands and expected scores.
 | [`castorini/gaggle-reranker-run2-20261004`](https://huggingface.co/castorini/gaggle-reranker-run2-20261004) | baseline run 2 (seed 18) | Sec. 5 |
 | [`castorini/gaggle-reranker-run3-20261002`](https://huggingface.co/castorini/gaggle-reranker-run3-20261002) | baseline run 3 (seed 17, independent reproduction) | Sec. 5 |
 | [`castorini/gaggle-reranker-run4-20261005`](https://huggingface.co/castorini/gaggle-reranker-run4-20261005) | baseline run 4 (seed 17, H100s with GradCache) | Sec. 5 |
+| [`castorini/gaggle-nanochat-0.9b-pretrained-climbmix-20261105`](https://huggingface.co/castorini/gaggle-nanochat-0.9b-pretrained-climbmix-20261105) | 0.89B causal LM: the same data and recipe, a smaller shape | after the paper |
+| [`castorini/gaggle-nanochat-0.6b-pretrained-climbmix-20261121`](https://huggingface.co/castorini/gaggle-nanochat-0.6b-pretrained-climbmix-20261121) | 0.55B causal LM: the same data and recipe | after the paper |
+| [`castorini/gaggle-nanochat-ift-climbmix-20261031`](https://huggingface.co/castorini/gaggle-nanochat-ift-climbmix-20261031) | chat model: the 3.29B model after midtraining + SFT | after the paper |
+| [`castorini/gaggle-nanochat-0.9b-ift-climbmix-20261108`](https://huggingface.co/castorini/gaggle-nanochat-0.9b-ift-climbmix-20261108) | chat model: the 0.9B model after the same midtraining + SFT | after the paper |
+| [`castorini/gaggle-reranker-0.9b-20261108`](https://huggingface.co/castorini/gaggle-reranker-0.9b-20261108) | 0.85B reranker: run 1's recipe on the 0.9B model (DL 0.632, BEIR 0.533) | after the paper |
+| [`castorini/gaggle-reranker-0.6b-20261122`](https://huggingface.co/castorini/gaggle-reranker-0.6b-20261122) | 0.52B reranker: run 1's recipe on the 0.6B model (DL 0.634, BEIR 0.533) | after the paper |
 
 Scoring with the released reranker needs only `transformers`:
 
@@ -59,11 +65,13 @@ print(model.compute_score([("what is a greenhouse gas", "Carbon dioxide traps he
 
 | Path | Paper | Contents |
 |---|---|---|
-| [`pretrain/`](pretrain/) | Sec. 4 | ClimbMix pre-training of the d34 backbone, stage by stage (tokenizer, batch ramp, 2M-token production) |
+| [`pretrain/`](pretrain/) | Sec. 4 | ClimbMix pre-training of the Gaggle backbones (3.3B, 0.9B, 0.6B): one trainer, one config per model |
+| [`pretrain/d34_original_run/`](pretrain/d34_original_run/) | Sec. 4 | the 3.3B run as it ran, stage by stage (tokenizer, batch ramp, 2M-token production): its exact code, rebuilt and checked |
 | [`pretrain/mntp/`](pretrain/mntp/) | Sec. 4 | the bidirectional MNTP continuation |
 | [`pretrain/continue/`](pretrain/continue/) | – | continued pre-training from a released checkpoint on another data mix (used by `benchmaxxing/`) |
 | [`pretrain_eval/`](pretrain_eval/) | Sec. 4 | CORE / MMLU / MMLU-Pro harness for the base-model comparison |
-| [`reranker/`](reranker/) | Sec. 5, 6 | supervised fine-tuning: one package, one config per paper row, data preparation, model soup, HF export |
+| [`posttrain/`](posttrain/) | – | midtraining + SFT of the chat models (3.3B and 0.9B) |
+| [`reranker/`](reranker/) | Sec. 5, 6 | supervised fine-tuning: one package, one config per paper row (and per post-paper model in `configs/experiments/`), data preparation, model soup, HF export |
 | [`eval/`](eval/) | Sec. 3, 5, 6 | BM25 candidates, the reranking evaluator, BM25 / oracle rows, the fine-tuned and listwise baselines |
 | [`diagnostics/`](diagnostics/) | Sec. 6.1, 6.3 | attention-blocking test of the MNTP rerankers, backbone weight scale |
 | [`paper/`](paper/) | all | `manifest.yaml` (every reproduced row, its config and its printed scores) and `check_results.py` |
@@ -103,6 +111,19 @@ python eval/report.py gaggle                                # DL19 nDCG@10 ≈ 0
 **Data licences:** Robust04 and TREC-News documents may not be redistributed, so the repository ships only doc-ID
 rankings and fingerprints of the reranker inputs. You rebuild the text from Pyserini's prebuilt indexes; see
 [`eval/candidates/`](eval/candidates/).
+
+## Added after the paper
+
+- **Two smaller backbones**, 0.9B and 0.6B, pre-trained with the paper's data and recipe. [`pretrain/README.md`](pretrain/README.md)
+  also summarizes how their shapes were chosen and why neither is distilled from the 3.3B model.
+- **One pre-training trainer** for all three sizes. Its 3.3B config follows the original run's schedule step for step
+  (a CPU test checks all 229,067 steps); the staged pipeline that produced the 3.3B release is kept in
+  [`pretrain/d34_original_run/`](pretrain/d34_original_run/).
+- **Rerankers** on the two smaller backbones ([`reranker/configs/experiments/`](reranker/configs/experiments/)).
+- **Chat models**: midtraining + SFT of the 3.3B and 0.9B models ([`posttrain/`](posttrain/)).
+- **[`benchmaxxing/cpt/`](benchmaxxing/cpt/)**: the continued-pretraining plan now covers the 0.6B model too.
+
+Commands, expected scores and the checks against the original runs: [REPRODUCE.md](REPRODUCE.md#after-the-paper-the-09b-and-06b-models-their-rerankers-and-the-chat-models).
 
 ## Licence
 

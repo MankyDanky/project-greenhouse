@@ -22,7 +22,7 @@ RECIPE = os.path.normpath(os.path.join(HERE, ".."))
 sys.path.insert(0, os.path.join(RECIPE, "src"))
 sys.path.insert(0, HERE)
 
-from prompt_builder_nc import PairBuilder, readout_offset, setup_tokenizer, yes_no_ids  # noqa: E402
+from prompt_builder_nc import ASSISTANT_END, PairBuilder, readout_offset, setup_tokenizer, yes_no_ids  # noqa: E402
 from configuration_gaggle import GaggleRerankerConfig                                   # noqa: E402
 
 SHARD_BYTES = 4 * 1000 ** 3
@@ -55,6 +55,8 @@ def main():
     cfg, weights = dict(sd0["cfg"]), sd0["model"]
     backbone = resolve_backbone(cfg["model_name"])
     meta = json.load(open(glob.glob(os.path.join(backbone, "meta_*.json"))[0]))["model_config"]
+    known = {"vocab_size", "n_layer", "n_head", "n_kv_head", "n_embd", "sequence_len", "window_pattern", "ve_every"}
+    assert set(meta) <= known, f"model_config has fields this port does not model: {set(meta) - known}"
 
     from transformers import AutoTokenizer
     tok = setup_tokenizer(AutoTokenizer.from_pretrained(backbone))
@@ -68,7 +70,7 @@ def main():
     conf = GaggleRerankerConfig(
         vocab_size=meta["vocab_size"], n_layer=meta["n_layer"], n_head=meta["n_head"],
         n_kv_head=meta["n_kv_head"], n_embd=meta["n_embd"], sequence_len=meta["sequence_len"],
-        window_pattern=meta.get("window_pattern", "SSSL"),
+        window_pattern=meta.get("window_pattern", "SSSL"), ve_every=meta.get("ve_every", 2),
         max_query_len=cfg["max_query_len"], max_doc_len=cfg["max_doc_len"], prompt=prompt,
         prompt_template=pb.render("{query}", "{passage}").replace("<|bos|>", "<|bos|>"),
         prompt_prefix_ids=pb._pre, prompt_mid_ids=pb._mid, prompt_suffix_ids=pb._suf,
@@ -126,9 +128,11 @@ def main():
     conf.save_pretrained(args.out)
     # ---- tokenizer: ship it with pad/eos pinned, so no setup helper is needed -------------------
     shutil.copy(os.path.join(backbone, "tokenizer.json"), os.path.join(args.out, "tokenizer.json"))
-    tc = json.load(open(os.path.join(backbone, "tokenizer_config.json")))
-    tc.update({"eos_token": tok.eos_token, "pad_token": tok.pad_token, "padding_side": "right",
-               "model_max_length": meta["sequence_len"], "clean_up_tokenization_spaces": False})
+    # Written in full rather than copied from the backbone: the released base repos' tokenizer_config.json is set up for
+    # generation (eos <|bos|>, left padding, add_bos_token), while every released reranker ships exactly these keys.
+    tc = {"tokenizer_class": "PreTrainedTokenizerFast", "model_max_length": meta["sequence_len"],
+          "bos_token": tok.bos_token, "eos_token": ASSISTANT_END, "pad_token": ASSISTANT_END, "padding_side": "right",
+          "clean_up_tokenization_spaces": False}
     json.dump(tc, open(os.path.join(args.out, "tokenizer_config.json"), "w"), indent=1)
     for f in ("configuration_gaggle.py", "modeling_gaggle.py"):
         shutil.copy(os.path.join(HERE, f), os.path.join(args.out, f))

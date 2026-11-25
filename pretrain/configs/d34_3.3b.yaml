@@ -1,0 +1,27 @@
+# The 3.3B Gaggle backbone, castorini/gaggle-nanochat-pretrained-climbmix-20260924 (paper Sec. 4): nanochat depth 34
+# on one pass over ClimbMix. These settings reproduce the original run's schedule at every step: batch, learning
+# rate, Muon momentum and weight decay (tests/test_schedule_matches_d34.py checks all 229,067 steps against
+# d34_original_run/, which trained it in three stages). The released checkpoint is the best-CORE one, step 227,158.
+run: d34-climbmix
+attention: fa3                      # FlashAttention-3 (Hopper); the trainer stops rather than fall back to SDPA
+gpus: 8                             # the run: one node of 8 x H100 80GB
+train_args:
+  depth: 34                         # 34 layers x width 2,176 (aspect ratio 64), 17 heads of 128
+  aspect-ratio: 64
+  ve-every: 2                       # value embeddings on alternate layers (nanochat's rule)
+  fp8: true                         # FP8 matmuls, tensorwise scaling
+  fp8-recipe: tensorwise
+  # 262,144 -> 524,288 at 10.0B tokens -> 1,048,576 at 30.4B -> 2,097,152 from step 136,316 (92.54B tokens), as in
+  # the run; the last step is a half batch, so the run lands on exactly 287,049,515,008 tokens in 229,067 steps.
+  batch-schedule: "262144:10e9,524288:30.4e9,1048576:92537618432,2097152"
+  target-tokens: 287049515008       # one pass over ClimbMix
+  warmdown-ratio: 0.5528            # of the canonical horizon (321,817 steps of 2^20 tokens): LR decay from 100.5B tokens
+  weight-decay-batch-cap: 1048576   # Muon weight decay follows the batch (sqrt) up to 1M and is held at 2M
+  matrix-lr: 0.02                   # every LR is scaled once for the first batch (x 0.7071) and then held: Muon 0.014142
+  device-batch-size: 8              # 8 GPUs x 8 x 2048 = 131,072 tokens per micro-step
+  eval-every: 1000                  # val bpb
+  core-metric-every: 5000           # CORE, 500 examples per task (the run picked its release by CORE: see README)
+  sample-every: -1
+  save-every: 600
+  keep-checkpoints: 3
+  log-every: 50

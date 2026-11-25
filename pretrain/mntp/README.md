@@ -29,12 +29,13 @@ Everything else is identical: model, FP8, batch, learning rates, schedule.
 ## Run
 
 You need the causal checkpoint at step 209,158 (canonical step 282,000, 245.3B tokens). It is not released and will
-not be, so it has to come from your own run of the causal recipe (`../README.md`):
+not be, so it has to come from your own run of the causal recipe as it ran, stage by stage (`../d34_original_run/README.md`;
+the MNTP trainer resumes a stage-3 production checkpoint and requires its metadata):
 - Stage 3 saves every 1,200 canonical steps and keeps only the newest three (`--production-keep-latest=3`). 282,000
   is a save point.
 - When it is written, copy `model_209158.pt` and `meta_209158.json` out of `base_checkpoints/<tag>/`. The meta file
   carries the eight per-rank data cursors the continuation resumes from. Alternatively, raise
-  `--production-keep-latest` in `stage3_2m_production/production/node_launch.sh` before stage 3 starts.
+  `--production-keep-latest` in `d34_original_run/stage3_2m_production/production/node_launch.sh` before stage 3 starts.
 
 Then, on one node with 8 H100/H200 GPUs:
 

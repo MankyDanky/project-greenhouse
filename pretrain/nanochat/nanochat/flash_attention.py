@@ -28,6 +28,13 @@ def _load_flash_attention_3():
         major, _ = torch.cuda.get_device_capability()
         # FA3 kernels are currently compiled for Hopper (sm90), Ada (sm89) and Ampere (sm80/sm86)
         # Blackwell (sm100) needs SDPA fallback until FA3 is recompiled or FA4 is released
+        # Gate on the architecture, not on whether the kernel package exists: kernels-community/flash-attn3
+        # declares archs ["8.0", "9.0a"] in its build metadata, so it has no code for Blackwell (sm_100 /
+        # sm_120). There it still loads, then its first call fails with "no kernel image is available for
+        # execution on the device" through exit(1), which kills the process and cannot be caught.
+        # (sm_80 code also runs on sm_86 / sm_89, so Ampere and Ada keep FA3.)
+        if major not in (8, 9):
+            return None
         import os
         os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
         from kernels import get_kernel, has_kernel
@@ -49,8 +56,10 @@ def _load_flash_attention_3():
 _fa3 = _load_flash_attention_3()
 HAS_FA3 = _fa3 is not None
 
-# Override for testing: set to 'fa3', 'sdpa', or None (auto)
-_override_impl = None
+# Override for testing: set to 'fa3', 'sdpa', or None (auto). NANOCHAT_ATTN=fa3|sdpa|auto sets it from the
+# environment, e.g. to force one attention kernel across mixed GPU types in a sweep.
+import os as _os
+_override_impl = {"fa3": "fa3", "sdpa": "sdpa"}.get(_os.environ.get("NANOCHAT_ATTN", "auto").lower())
 
 
 def _resolve_use_fa3():

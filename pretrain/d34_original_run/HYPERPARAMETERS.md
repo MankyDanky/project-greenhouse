@@ -1,8 +1,9 @@
 # d34 ClimbMix: optimizer hyperparameters
 
 What the released model (`castorini/gaggle-nanochat-pretrained-climbmix-20260924`, step 227,158, 283B tokens) trained
-with. Taken from the training code in this folder (nanochat `92d63d4`: `nanochat/scripts/base_train.py`, `nanochat/nanochat/gpt.py`,
-`nanochat/nanochat/optim.py`), the production trainer, and the run logs. Everything is nanochat's default unless marked **ours**.
+with. Taken from the run's training code (nanochat `92d63d4` + `stage1_ramp_to_92B/d34cm_head.patch`, which `setup.sh` rebuilds:
+`scripts/base_train.py`, `nanochat/gpt.py`, `nanochat/optim.py`), the production trainer, and the run logs. The unified
+trainer in `../nanochat` uses the same formulas. Everything is nanochat's default unless marked **ours**.
 
 ## Run shape
 

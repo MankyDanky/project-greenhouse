@@ -1,6 +1,5 @@
 {
   "format": "d34-indexed-climbmix-v1",
-  "source_host": "killarney.alliancecan.ca",
   "source_directory": "base_data_climbmix",
   "source_dataset_py_sha256": "3ec2ad5987875e3d7f3ec72f08d78089fe8a3b20090448b798c21c4efb93d18a",
   "source_dataloader_py_sha256": "5cc72d7207931f112d685ba8e04c112e1a4ab7756dbbb29b95bdb4908a21864d",

@@ -33,6 +33,7 @@ from nanochat.checkpoint_manager import save_checkpoint, load_checkpoint
 from nanochat.loss_eval import evaluate_bpb
 from nanochat.engine import Engine
 from nanochat.flash_attention import HAS_FA3
+from nanochat.batch_schedule import build_batch_schedule
 from scripts.base_eval import evaluate_core
 print_banner()
 
@@ -52,6 +53,7 @@ parser.add_argument("--aspect-ratio", type=int, default=64, help="model_dim = de
 parser.add_argument("--head-dim", type=int, default=128, help="target head dimension for attention")
 parser.add_argument("--max-seq-len", type=int, default=2048, help="max context length")
 parser.add_argument("--window-pattern", type=str, default="SSSL", help="sliding window pattern tiled across layers: L=full, S=half context (e.g. 'SSL')")
+parser.add_argument("--ve-every", type=int, default=2, help="value embedding on every k-th layer counting back from the last (2 = upstream alternating; larger = fewer tables)")
 # Training horizon (only one used, in order of precedence)
 parser.add_argument("--num-iterations", type=int, default=-1, help="explicit number of optimization steps (-1 = disable)")
 parser.add_argument("--target-flops", type=float, default=-1.0, help="calculate num_iterations to reach target_flops (-1 = disable)")
@@ -59,6 +61,10 @@ parser.add_argument("--target-param-data-ratio", type=float, default=12, help="c
 # Optimization
 parser.add_argument("--device-batch-size", type=int, default=32, help="per-device batch size. good number to reduce to 16,8,4,... if you OOM on VRAM.")
 parser.add_argument("--total-batch-size", type=int, default=-1, help="total batch size in tokens. decent numbers are e.g. 524288. (-1 = auto-compute optimal)")
+parser.add_argument("--batch-schedule", type=str, default="", help="phased total batch size 'B1:END1,...,Bn' (END = cumulative tokens where a phase ends; the last phase runs to --target-tokens). Replaces --total-batch-size; LRs and weight decay keep the values computed for the first phase's batch")
+parser.add_argument("--target-tokens", type=int, default=-1, help="training horizon in tokens, required by --batch-schedule (--num-iterations then only stops early)")
+parser.add_argument("--canonical-batch", type=int, default=2**20, help="with --batch-schedule: a step of batch B advances the LR/momentum/weight-decay schedules by max(1, B/canonical_batch) steps")
+parser.add_argument("--weight-decay-batch-cap", type=int, default=-1, help="with --batch-schedule: the Muon weight decay follows each phase's batch (nanochat's sqrt(B) scaling) up to this batch and holds above it (-1 = keep the first phase's value)")
 parser.add_argument("--embedding-lr", type=float, default=0.3, help="learning rate for embedding parameters (Adam)")
 parser.add_argument("--unembedding-lr", type=float, default=0.008, help="learning rate for unembedding parameters (Adam)")
 parser.add_argument("--weight-decay", type=float, default=0.28, help="cautious weight decay for the Muon optimizer (for weights)")
@@ -77,6 +83,9 @@ parser.add_argument("--sample-every", type=int, default=2000, help="sample from 
 parser.add_argument("--save-every", type=int, default=-1, help="save checkpoints every N steps (-1 = only at end)")
 parser.add_argument("--deadline-margin-s", type=int, default=900, help="(d34cm) save a checkpoint and exit this many seconds before SLURM_JOB_END_TIME (<=0 disables)")
 parser.add_argument("--stop-at-step", type=int, default=-1, help="(d34cm) batch-ramp stage boundary: save a checkpoint at this global step and exit 0 (-1 disables)")
+parser.add_argument("--keep-checkpoints", type=int, default=-1, help="after each complete save, delete all but the newest N complete checkpoints (-1 = keep all)")
+parser.add_argument("--log-every", type=int, default=100, help="log train metrics (loss, lr, dt, tok/s, mfu) to wandb every N steps")
+parser.add_argument("--auto-resume", action="store_true", help="resume from the newest complete checkpoint of this model tag, if any (for preemptible/requeued jobs)")
 # Output
 parser.add_argument("--model-tag", type=str, default=None, help="override model tag for checkpoint directory name")
 args = parser.parse_args()
@@ -99,7 +108,10 @@ print0(f"COMPUTE_DTYPE: {COMPUTE_DTYPE} ({COMPUTE_DTYPE_REASON})")
 
 # wandb logging init
 use_dummy_wandb = args.run == "dummy" or not master_process
-wandb_run = DummyWandb() if use_dummy_wandb else wandb.init(project="nanochat", name=args.run, config=user_config)
+# Project comes from $WANDB_PROJECT when set (an explicit project= would otherwise override it). Run id, resume
+# mode, group and tags are left to wandb's own environment variables (WANDB_RUN_ID, WANDB_RESUME, ...), so a
+# requeued job can continue the same run.
+wandb_run = DummyWandb() if use_dummy_wandb else wandb.init(project=os.environ.get("WANDB_PROJECT", "nanochat"), name=args.run, config=user_config)
 
 # Flash Attention status
 from nanochat.flash_attention import USE_FA3
@@ -128,17 +140,20 @@ print0(f"Vocab size: {vocab_size:,}")
 # -----------------------------------------------------------------------------
 # Initialize the Model
 
-def build_model_meta(depth):
-    """Build a model on meta device for a given depth (shapes/dtypes only, no data)."""
+def build_model_meta(depth, aspect_ratio=None, ve_every=None):
+    """Build a model on meta device for a given depth (shapes/dtypes only, no data).
+    aspect_ratio and ve_every default to the command-line values; the d12 scaling reference overrides them."""
+    aspect_ratio = args.aspect_ratio if aspect_ratio is None else aspect_ratio
+    ve_every = args.ve_every if ve_every is None else ve_every
     # Model dim is nudged up to nearest multiple of head_dim for clean division
     # (FA3 requires head_dim divisible by 8, and this guarantees head_dim == args.head_dim exactly)
-    base_dim = depth * args.aspect_ratio
+    base_dim = depth * aspect_ratio
     model_dim = ((base_dim + args.head_dim - 1) // args.head_dim) * args.head_dim
     num_heads = model_dim // args.head_dim
     config = GPTConfig(
         sequence_len=args.max_seq_len, vocab_size=vocab_size,
         n_layer=depth, n_head=num_heads, n_kv_head=num_heads, n_embd=model_dim,
-        window_pattern=args.window_pattern,
+        window_pattern=args.window_pattern, ve_every=ve_every,
     )
     with torch.device("meta"):
         model_meta = GPT(config)
@@ -148,6 +163,10 @@ def build_model_meta(depth):
 model = build_model_meta(args.depth) # 1) Build on meta device (only shapes/dtypes, no data)
 model_config = model.config
 model_config_kwargs = asdict(model_config)
+if model_config_kwargs.get("ve_every") == 2:
+    # ve_every 2 is upstream's alternating rule: leave it out of the meta so such checkpoints keep upstream's format
+    # and load with stock nanochat 92d63d4 (and every tool built on it)
+    del model_config_kwargs["ve_every"]
 print0(f"Model config:\n{json.dumps(model_config_kwargs, indent=2)}")
 model.to_empty(device=device) # 2) All tensors get storage on target device but with uninitialized (garbage) data
 model.init_weights() # 3) All tensors get initialized
@@ -156,6 +175,23 @@ model.init_weights() # 3) All tensors get initialized
 base_dir = get_base_dir()
 output_dirname = args.model_tag if args.model_tag else f"d{args.depth}" # e.g. d12
 checkpoint_dir = os.path.join(base_dir, "base_checkpoints", output_dirname)
+
+def complete_checkpoint_steps(ckpt_dir):
+    """Steps whose checkpoint finished writing on every rank (marked by complete_<step>, written last)."""
+    if not os.path.isdir(ckpt_dir):
+        return []
+    return sorted(int(f[len("complete_"):]) for f in os.listdir(ckpt_dir)
+                  if f.startswith("complete_") and f[len("complete_"):].isdigit())
+
+if args.auto_resume and args.resume_from_step == -1:
+    # A preempted job can die mid-save (GraceTime=0), so never trust the newest *file*: only a step whose
+    # completion marker exists is guaranteed to have its model, meta and every rank's optimizer shard on disk.
+    _done = complete_checkpoint_steps(checkpoint_dir)
+    if _done:
+        args.resume_from_step = _done[-1]
+        print0(f"Auto-resume: newest complete checkpoint in {checkpoint_dir} is step {args.resume_from_step}")
+    else:
+        print0(f"Auto-resume: no complete checkpoint in {checkpoint_dir}, starting from scratch")
 resuming = args.resume_from_step != -1
 if resuming:
     print0(f"Resuming optimization from step {args.resume_from_step}")
@@ -271,7 +307,10 @@ num_scaling_params = get_scaling_params(model)
 target_tokens = int(args.target_param_data_ratio * num_scaling_params) # optimal tokens for the model we are about to train
 
 # Our reference model is d12, this is where a lot of hyperparameters are tuned and then transfered to higher depths (muP style)
-d12_ref = build_model_meta(12) # creates the model on meta device
+# The reference is the stock d12 (aspect ratio 64), where the hyperparameters were tuned. Building it with
+# --aspect-ratio instead would move D_REF with the shape, and with it the auto batch size and the weight decay
+# below, so a shape sweep would silently vary regularization (2.2-2.5x less weight decay at aspect 36-41).
+d12_ref = build_model_meta(12, aspect_ratio=64, ve_every=2) # creates the model on meta device
 D_REF = args.target_param_data_ratio * get_scaling_params(d12_ref) # compute-optimal d12 training horizon in tokens (measured empirically)
 B_REF = 2**19 # optimal batch size at d12 ~= 524,288 tokens (measured empirically)
 
@@ -279,7 +318,19 @@ B_REF = 2**19 # optimal batch size at d12 ~= 524,288 tokens (measured empiricall
 # We follow the Power Lines paper (Bopt ∝ D^0.383), ref: https://arxiv.org/abs/2505.13738
 # The optimal batch size grows as approximately D^0.383, so e.g. if D doubles from d12 to d24, B should grow by 2^0.383 ≈ 1.3x.
 total_batch_size = args.total_batch_size # user-provided override is possible
-if total_batch_size == -1:
+batch_schedule = None
+if args.batch_schedule:
+    # The batch grows by phase (total_batch_size is reset every step in the loop), but the LR and weight-decay scaling
+    # below is computed once, for the first phase's batch, and kept: the peak LRs stay fixed as the batch grows, so each
+    # increase cuts gradient noise like an LR decay would (the d34 ClimbMix recipe, arXiv 2610.11922 Sec. 5.1).
+    assert args.total_batch_size == -1, "--batch-schedule replaces --total-batch-size"
+    batch_schedule = build_batch_schedule(args.batch_schedule, args.target_tokens, args.canonical_batch,
+                                          granularity=args.device_batch_size * args.max_seq_len * ddp_world_size)
+    if batch_schedule.overshoot:
+        print0(f"Note: the last step overshoots --target-tokens by {batch_schedule.overshoot:,} tokens (the remainder is not a "
+               f"whole number of micro-batches)")
+    total_batch_size = batch_schedule.batch[0]
+elif total_batch_size == -1:
     batch_size_ratio = target_tokens / D_REF
     predicted_batch_size = B_REF * batch_size_ratio ** 0.383
     total_batch_size = 2 ** round(math.log2(predicted_batch_size)) # clamp to nearest power of 2 for efficiency
@@ -304,6 +355,13 @@ if batch_ratio != 1.0:
 weight_decay_scaled = args.weight_decay * math.sqrt(total_batch_size / B_REF) * (D_REF / target_tokens)
 if weight_decay_scaled != args.weight_decay:
     print0(f"Scaling weight decay from {args.weight_decay:.6f} to {weight_decay_scaled:.6f} for depth {args.depth}")
+
+# With a batch schedule, weight_decay_scaled above is for the first phase's batch. --weight-decay-batch-cap lets the
+# Muon weight decay follow later phases with the same sqrt(B) scaling, up to the cap (the d34 run: up to 1M, held for 2M).
+def phase_wd_scale(batch):
+    if batch_schedule is None or args.weight_decay_batch_cap <= 0:
+        return 1.0
+    return (min(batch, args.weight_decay_batch_cap) / batch_schedule.batch[0]) ** 0.5
 
 # -----------------------------------------------------------------------------
 # Initialize the Optimizer (combined MuonAdamW: Muon for matrix params, AdamW for rest)
@@ -347,7 +405,21 @@ x, y, dataloader_state_dict = next(train_loader) # kick off load of the very fir
 
 # num_iterations: either it is given, or from target flops, or from target data:param ratio (in that order)
 assert args.num_iterations > 0 or args.target_param_data_ratio > 0 or args.target_flops > 0
-if args.num_iterations > 0:
+if batch_schedule is not None:
+    num_iterations = batch_schedule.num_steps
+    print0(f"Batch schedule {args.batch_schedule!r} over {args.target_tokens:,} tokens: {num_iterations:,} steps, "
+           f"{batch_schedule.canonical_horizon:,.0f} canonical steps (unit {args.canonical_batch:,} tokens)")
+    for b, s0, s1 in batch_schedule.phase_ranges():
+        print0(f"  batch {b:>10,}: steps {s0:,}-{s1:,}, tokens {batch_schedule.tokens_before[s0]/1e9:.2f}B-{batch_schedule.tokens_before[s1+1]/1e9:.2f}B, "
+               f"canonical steps {batch_schedule.canonical_before[s0]:,.0f}-{batch_schedule.canonical_before[s1+1]:,.0f}, "
+               f"Muon weight decay {weight_decay_scaled * phase_wd_scale(b):.6f} (before the cosine)")
+    _wd_start = round(batch_schedule.canonical_horizon - round(args.warmdown_ratio * batch_schedule.canonical_horizon))
+    _wd_step = next(i for i, c in enumerate(batch_schedule.canonical_before) if c >= _wd_start)
+    print0(f"  LR warmdown starts at canonical step {_wd_start:,} = step {_wd_step:,} = {batch_schedule.tokens_before[_wd_step]/1e9:.2f}B tokens")
+    if args.num_iterations > 0:
+        num_iterations = min(args.num_iterations, num_iterations) # only stops early (smoke tests); the schedules keep the full horizon
+        print0(f"Stopping early at step {num_iterations:,} (--num-iterations)")
+elif args.num_iterations > 0:
     # Override num_iterations to a specific value if given
     num_iterations = args.num_iterations
     print0(f"Using user-provided number of iterations: {num_iterations:,}")
@@ -361,39 +433,66 @@ elif args.target_param_data_ratio > 0:
     print0(f"Calculated number of iterations from target data:param ratio: {num_iterations:,}")
 else:
     raise ValueError("No training horizon specified")
-total_tokens = total_batch_size * num_iterations # the actual number of tokens we will train for
+total_tokens = batch_schedule.tokens_before[num_iterations] if batch_schedule is not None else total_batch_size * num_iterations # the actual number of tokens we will train for
 print0(f"Total number of training tokens: {total_tokens:,}")
-print0(f"Tokens : Scaling params ratio: {total_batch_size * num_iterations / num_scaling_params:.2f}") # e.g. Chinchilla was ~20
+if not use_dummy_wandb:
+    # derived quantities, so runs can be compared in wandb without re-deriving them from the flags
+    wandb_run.config.update({
+        "derived/n_layer": model_config.n_layer, "derived/n_embd": model_config.n_embd,
+        "derived/n_head": model_config.n_head, "derived/ve_every": model_config.ve_every,
+        "derived/n_value_embeds": len(orig_model.value_embeds) if hasattr(orig_model, "value_embeds") else None,
+        **{f"derived/params_{k}": v for k, v in param_counts.items()},
+        "derived/scaling_params": num_scaling_params, "derived/flops_per_token": num_flops_per_token,
+        "derived/total_batch_size": args.batch_schedule or total_batch_size, "derived/num_iterations": num_iterations,
+        "derived/canonical_horizon": batch_schedule.canonical_horizon if batch_schedule is not None else num_iterations,
+        "derived/total_tokens": total_tokens, "derived/total_flops": num_flops_per_token * total_tokens,
+        "derived/weight_decay_scaled": weight_decay_scaled, "derived/batch_lr_scale": batch_lr_scale,
+        "derived/attention": "fa3" if using_fa3 else "sdpa",
+        "derived/gpu": torch.cuda.get_device_name() if torch.cuda.is_available() else "cpu",
+        "derived/world_size": ddp_world_size,
+    }, allow_val_change=True)
+print0(f"Tokens : Scaling params ratio: {total_tokens / num_scaling_params:.2f}") # e.g. Chinchilla was ~20
 print0(f"Total training FLOPs estimate: {num_flops_per_token * total_tokens:e}")
+
+# The schedules below run on a position `pos` out of a horizon: the step and num_iterations, or with a batch schedule
+# the canonical step and canonical horizon (see nanochat/batch_schedule.py). Same math either way.
+if batch_schedule is not None:
+    sched_pos = lambda it: batch_schedule.canonical_before[it]
+    sched_horizon = batch_schedule.canonical_horizon
+else:
+    sched_pos = lambda it: it
+    sched_horizon = num_iterations
 
 # Learning rate schedule (linear warmup, constant, linear warmdown)
 def get_lr_multiplier(it):
     warmup_iters = args.warmup_steps
-    warmdown_iters = round(args.warmdown_ratio * num_iterations)
-    if it < warmup_iters:
-        return (it + 1) / warmup_iters
-    elif it <= num_iterations - warmdown_iters:
+    warmdown_iters = round(args.warmdown_ratio * sched_horizon)
+    pos = sched_pos(it)
+    if pos < warmup_iters:
+        return (pos + 1) / warmup_iters
+    elif pos <= sched_horizon - warmdown_iters:
         return 1.0
     else:
-        progress = (num_iterations - it) / warmdown_iters
+        progress = (sched_horizon - pos) / warmdown_iters
         return progress * 1.0 + (1 - progress) * args.final_lr_frac
 
 # Momentum scheduler for Muon optimizer (warms up to 0.97, warms down to 0.90 during LR warmdown)
 def get_muon_momentum(it):
-    warmdown_iters = round(args.warmdown_ratio * num_iterations)
-    warmdown_start = num_iterations - warmdown_iters
-    if it < 400:
-        frac = it / 400
+    warmdown_iters = round(args.warmdown_ratio * sched_horizon)
+    warmdown_start = sched_horizon - warmdown_iters
+    pos = sched_pos(it)
+    if pos < 400:
+        frac = pos / 400
         return (1 - frac) * 0.85 + frac * 0.97
-    elif it >= warmdown_start:
-        progress = (it - warmdown_start) / warmdown_iters
+    elif pos >= warmdown_start:
+        progress = (pos - warmdown_start) / warmdown_iters
         return 0.97 * (1 - progress) + 0.90 * progress
     else:
         return 0.97
 
 # Weight decay scheduler for Muon optimizer (cosine decay to zero over the course of training)
 def get_weight_decay(it):
-    return weight_decay_scaled * 0.5 * (1 + math.cos(math.pi * it / num_iterations))
+    return weight_decay_scaled * 0.5 * (1 + math.cos(math.pi * sched_pos(it) / sched_horizon))
 
 # -----------------------------------------------------------------------------
 # Training loop
@@ -416,16 +515,68 @@ else:
 # Figure out the needed gradient accumulation micro-steps to reach the desired total batch size per step
 tokens_per_fwdbwd = args.device_batch_size * args.max_seq_len # tokens per iteration for a single rank
 world_tokens_per_fwdbwd = tokens_per_fwdbwd * ddp_world_size # total tokens per iteration for all ranks
-assert total_batch_size % world_tokens_per_fwdbwd == 0, f"total_batch_size ({total_batch_size}) must be a multiple of {world_tokens_per_fwdbwd}."
+for _b in (sorted(set(batch_schedule.batch)) if batch_schedule is not None else [total_batch_size]):
+    assert _b % world_tokens_per_fwdbwd == 0, f"total_batch_size ({_b}) must be a multiple of {world_tokens_per_fwdbwd}."
+if batch_schedule is not None:
+    total_batch_size = batch_schedule.batch[min(step, batch_schedule.num_steps - 1)]
 grad_accum_steps = total_batch_size // world_tokens_per_fwdbwd
 print0(f"Tokens / micro-batch / rank: {args.device_batch_size} x {args.max_seq_len} = {tokens_per_fwdbwd:,}")
 print0(f"Tokens / micro-batch: {world_tokens_per_fwdbwd:,}")
 print0(f"Total batch size {total_batch_size:,} => gradient accumulation steps: {grad_accum_steps}")
 
 # Go!
+def save_and_mark(step):
+    """Save a checkpoint (model, meta, every rank's optimizer shard), then mark it complete and prune old ones. Used by
+    the periodic save and by the deadline / stage stop, so --auto-resume sees both."""
+    save_checkpoint(
+        checkpoint_dir,
+        step,
+        orig_model.state_dict(), # model parameters
+        optimizer.state_dict(), # optimizer state
+        { # metadata saved as json
+            "step": step,
+            "val_bpb": val_bpb, # loss at last step
+            "model_config": model_config_kwargs,
+            "user_config": user_config, # inputs to the training script
+            "device_batch_size": args.device_batch_size,
+            "max_seq_len": args.max_seq_len,
+            "total_batch_size": total_batch_size,
+            "dataloader_state_dict": dataloader_state_dict,
+            "loop_state": { # all loop state (other than step) so that we can resume training
+                "min_val_bpb": min_val_bpb,
+                "smooth_train_loss": smooth_train_loss,
+                "total_training_time": total_training_time,
+            },
+        },
+        rank=ddp_rank,
+    )
+    # Mark the step complete only after every rank's optimizer shard is on disk, then prune older ones.
+    if is_ddp_initialized():
+        dist.barrier()
+    if master_process:
+        open(os.path.join(checkpoint_dir, f"complete_{step:06d}"), "w").close()
+        if args.keep_checkpoints > 0:
+            _done = complete_checkpoint_steps(checkpoint_dir)
+            if len(_done) > args.keep_checkpoints:
+                _oldest_kept = _done[-args.keep_checkpoints]
+                for _f in os.listdir(checkpoint_dir):
+                    _stem = _f.split(".")[0]                      # model_000200 / optim_000200_rank0 / complete_000200
+                    _parts = _stem.split("_")
+                    if _parts[0] in ("model", "meta", "optim", "complete") and len(_parts) >= 2 and _parts[1].isdigit() \
+                            and int(_parts[1]) < _oldest_kept:
+                        os.remove(os.path.join(checkpoint_dir, _f))
+                print0(f"Pruned checkpoints older than step {_oldest_kept} (keeping {args.keep_checkpoints})")
+        wandb_run.log({"step": step, "checkpoint/saved_step": step})
+
+
 while True:
     last_step = step == num_iterations # loop runs num_iterations+1 times so that we can eval/save at the end
-    flops_so_far = num_flops_per_token * total_batch_size * step
+    if batch_schedule is not None:
+        total_batch_size = batch_schedule.batch[min(step, batch_schedule.num_steps - 1)]
+        grad_accum_steps = total_batch_size // world_tokens_per_fwdbwd
+        flops_so_far = num_flops_per_token * batch_schedule.tokens_before[step]
+    else:
+        flops_so_far = num_flops_per_token * total_batch_size * step
 
     # once in a while: evaluate the val bpb (all ranks participate)
     if args.eval_every > 0 and (last_step or step % args.eval_every == 0):
@@ -485,29 +636,7 @@ while True:
 
     # save checkpoint: at the end of the run, or every save_every steps, except at the first step or the resume step
     if last_step or (step > 0 and step != args.resume_from_step and args.save_every > 0 and step % args.save_every == 0):
-        save_checkpoint(
-            checkpoint_dir,
-            step,
-            orig_model.state_dict(), # model parameters
-            optimizer.state_dict(), # optimizer state
-            { # metadata saved as json
-                "step": step,
-                "val_bpb": val_bpb, # loss at last step
-                "model_config": model_config_kwargs,
-                "user_config": user_config, # inputs to the training script
-                "device_batch_size": args.device_batch_size,
-                "max_seq_len": args.max_seq_len,
-                "total_batch_size": total_batch_size,
-                "dataloader_state_dict": dataloader_state_dict,
-                "loop_state": { # all loop state (other than step) so that we can resume training
-                    "min_val_bpb": min_val_bpb,
-                    "smooth_train_loss": smooth_train_loss,
-                    "total_training_time": total_training_time,
-                },
-            },
-            rank=ddp_rank,
-        )
-
+        save_and_mark(step)
     # (d34cm) graceful stop before the Slurm wall-time limit OR at a batch-ramp stage boundary (--stop-at-step):
     # rank 0 decides, all ranks follow; save a checkpoint at this step (unless one was just written) and exit 0 so
     # the next job in the chain resumes here (possibly with a different --total-batch-size). Training math is untouched.
@@ -524,28 +653,7 @@ while True:
         if stop_flag.item() >= 1.0:
             saved_this_step = step > 0 and step != args.resume_from_step and args.save_every > 0 and step % args.save_every == 0
             if not saved_this_step:
-                save_checkpoint(
-                    checkpoint_dir,
-                    step,
-                    orig_model.state_dict(),
-                    optimizer.state_dict(),
-                    {
-                        "step": step,
-                        "val_bpb": val_bpb,
-                        "model_config": model_config_kwargs,
-                        "user_config": user_config,
-                        "device_batch_size": args.device_batch_size,
-                        "max_seq_len": args.max_seq_len,
-                        "total_batch_size": total_batch_size,
-                        "dataloader_state_dict": dataloader_state_dict,
-                        "loop_state": {
-                            "min_val_bpb": min_val_bpb,
-                            "smooth_train_loss": smooth_train_loss,
-                            "total_training_time": total_training_time,
-                        },
-                    },
-                    rank=ddp_rank,
-                )
+                save_and_mark(step)
             print0(f"{'STAGE STOP' if stop_flag.item() == 2.0 else 'DEADLINE STOP'}: checkpoint at step {step} saved; exiting for the next job in the chain")
             break
 
@@ -575,7 +683,7 @@ while True:
         group["lr"] = group["initial_lr"] * lrm
         if group['kind'] == 'muon':
             group["momentum"] = muon_momentum
-            group["weight_decay"] = muon_weight_decay
+            group["weight_decay"] = muon_weight_decay * phase_wd_scale(total_batch_size)
     if scaler is not None:
         scaler.unscale_(optimizer)
         # In distributed training, all ranks must agree on whether to skip the step.
@@ -615,8 +723,9 @@ while True:
     else:
         eta_str = ""
     epoch = f"{dataloader_state_dict['epoch']} pq: {dataloader_state_dict['pq_idx']} rg: {dataloader_state_dict['rg_idx']}"
-    print0(f"step {step:05d}/{num_iterations:05d} ({pct_done:.2f}%) | loss: {debiased_smooth_loss:.6f} | lrm: {lrm:.2f} | dt: {dt * 1000:.2f}ms | tok/sec: {tok_per_sec:,} | bf16_mfu: {mfu:.2f} | epoch: {epoch} | total time: {total_training_time/60:.2f}m{eta_str}")
-    if step % 100 == 0:
+    batch_str = f" | batch: {total_batch_size:,} | wd: {muon_weight_decay * phase_wd_scale(total_batch_size):.6f}" if batch_schedule is not None else ""
+    print0(f"step {step:05d}/{num_iterations:05d} ({pct_done:.2f}%) | loss: {debiased_smooth_loss:.6f} | lrm: {lrm:.2f}{batch_str} | dt: {dt * 1000:.2f}ms | tok/sec: {tok_per_sec:,} | bf16_mfu: {mfu:.2f} | epoch: {epoch} | total time: {total_training_time/60:.2f}m{eta_str}")
+    if step % args.log_every == 0:
         log_data = {
             "step": step,
             "total_training_flops": flops_so_far,
@@ -628,6 +737,11 @@ while True:
             "train/mfu": mfu,
             "train/epoch": epoch,
         }
+        if batch_schedule is not None:
+            log_data["train/batch_size"] = total_batch_size
+            log_data["train/muon_weight_decay"] = muon_weight_decay * phase_wd_scale(total_batch_size)
+            log_data["train/canonical_step"] = sched_pos(step)
+            log_data["train/tokens"] = batch_schedule.tokens_before[step + 1]
         wandb_run.log(log_data)
 
     # state update

@@ -52,9 +52,9 @@ Use `python paper/check_results.py --results eval/results --tag <row>=<your tag>
 
 | Item | Where | Notes |
 |---|---|---|
-| Causal d34 backbone (`gaggle-nanochat-pretrained-climbmix-20260924`) | [`pretrain/README.md`](pretrain/README.md) | one pass over ClimbMix, 287B tokens, ~1,600 H100-hours on one 8×H100 node; released step 227,158 |
+| Causal d34 backbone (`gaggle-nanochat-pretrained-climbmix-20260924`) | [`pretrain/README.md`](pretrain/README.md), `configs/d34_3.3b.yaml` | one pass over ClimbMix, 287B tokens, ~1,600 H100-hours on one 8×H100 node; released step 227,158. The config follows the original run's schedule step for step; the run as it ran, stage by stage, is [`pretrain/d34_original_run/`](pretrain/d34_original_run/) |
 | Bidirectional MNTP variant | [`pretrain/mntp/README.md`](pretrain/mntp/README.md) | continues causal step 209,158 for 41.75B tokens, ~340 H100-hours; that source checkpoint is not released, so keep it from your own stage-3 run (the README says how) |
-| Validation-loss curve (Fig. 1) | the pre-training logs (`metrics.jsonl` per stage; see `pretrain/README.md`) | the batch-size doublings are the discontinuities |
+| Validation-loss curve (Fig. 1) | the pre-training logs (`metrics.jsonl` per stage; see `pretrain/d34_original_run/README.md`) | the batch-size doublings are the discontinuities |
 | Base-model comparison (CORE / MMLU / MMLU-Pro) | [`pretrain_eval/`](pretrain_eval/) | `bash pretrain_eval/run_eval.sh nanochat\|mntp\|hf …`; reproduces our two rows (0.458 / 0.493 / 0.178; MNTP 0.453 / 0.187) and OPEN-1B's CORE (0.239); the MNTP row's CORE and the other external models are not included yet |
 
 ## Sec. 3 and 5: headline results, run-to-run variability, the soup
@@ -202,3 +202,36 @@ Every config spells its settings out in full (no inheritance). The defaults behi
 - 150 warm-up updates, then cosine decay to zero;
 - one epoch, seed 17;
 - evaluation with a BF16 backbone and FP32 scoring rows.
+
+## After the paper: the 0.9B and 0.6B models, their rerankers, and the chat models
+
+Released in November 2026 with the paper's data and recipes. Set-up is the same as above; the smaller backbones come
+from `bash reranker/data_prep/fetch_models.sh gaggle-0.9b gaggle-0.6b`.
+
+| Model | How | Hardware and time | Expected |
+|---|---|---|---|
+| 0.9B base (`gaggle-nanochat-0.9b-pretrained-climbmix-20261105`) | [`pretrain/`](pretrain/README.md), `configs/d32x1152_0.9b.yaml` | 4 × H200, ~560 H200-hours | val bpb 0.658; CORE 0.370 (500 per task, in training), 0.355 (every example); MMLU 0.357; MMLU-Pro 0.118 |
+| 0.6B base (`gaggle-nanochat-0.6b-pretrained-climbmix-20261121`) | [`pretrain/`](pretrain/README.md), `configs/d28x1024_0.6b.yaml` | 8 × H100, ~450 H100-hours | val bpb 0.678; CORE 0.342 / 0.333; MMLU 0.353; MMLU-Pro 0.124 |
+| 0.9B reranker (`gaggle-reranker-0.9b-20261108`) | `bash launch/train.sh configs/experiments/gaggle09b_lce.yaml 1` | 1 × H200, ~14 h | DL 0.632, BEIR 0.533 |
+| 0.6B reranker (`gaggle-reranker-0.6b-20261122`) | `bash launch/train.sh configs/experiments/gaggle06b_lce.yaml 1` | 1 × H200, ~10 h | DL 0.634, BEIR 0.533 |
+| 3.3B chat model (`gaggle-nanochat-ift-climbmix-20261031`) | [`posttrain/`](posttrain/README.md), `POST_MODEL=3b` | 1 × H100, ~7 h | ChatCORE 0.412 (`chat_eval -i sft`) |
+| 0.9B chat model (`gaggle-nanochat-0.9b-ift-climbmix-20261108`) | [`posttrain/`](posttrain/README.md), `POST_MODEL=0.9b` | 2 × H200, ~35 min | ChatCORE 0.259; MMLU 38.14, GSM8K 19.41 |
+
+Reranker means are over the same 12 test sets and BM25 top-100 candidates as the paper (`eval/run_eval.sh ours
+<ckpt_final.pt> <tag>`, then `eval/report.py <tag>`).
+
+### What has been verified for these
+
+Checked in November 2026 against the original runs, as for the paper's rows:
+
+| Check | Result |
+|---|---|
+| Pre-training schedule (`pretrain/tests/`, CPU) | the 3.3B config's batch, tokens, LR, Muon momentum and weight decay equal the original staged run's at all 229,067 steps; the 0.9B and 0.6B configs rebuild their runs' schedules |
+| Pre-training: this trainer vs the code each release ran, from scratch on 4 × H200 (150 steps for the 0.9B and 0.6B, 100 for the 3.3B) | the same LR and weight-decay scaling and step-0 validation loss; identical for the first 3 or 4 steps, then the usual nondeterministic drift: largest loss difference over 60 steps 3.7e-4 (0.9B) and 3.0e-4 (0.6B), within the 5.8e-4 between two runs of identical code, and 1.5e-3 (3.3B, whose own run-to-run spread was not measured) |
+| Pre-training stop and resume | a run stopped at a given step and one stopped by its job's time limit both resumed from their checkpoint with the saved validation loss; as in nanochat, the loader resumes at the next row group |
+| Reranker training plans (`tests/check_plans.py`) | both configs rebuild their original run's plan: 1,928 steps each (18,246 and 17,941 microbatches) |
+| Reranker training: original code vs this repo, same GPU and data | identical batches and first step; later steps differ only as much as the original code differs from itself |
+| Reranker export (`reranker/export_hf/`) on the original checkpoints | weights, config and model code byte-identical to the released Hugging Face repos |
+| Released rerankers re-scored with `eval/run_eval.sh` (DL19, NFCorpus, SciFact) | within 0.0027 of the original scores (bf16 across GPU types) |
+| Base models re-scored with `pretrain_eval/`, loaded through `pretrain/nanochat` | MMLU / MMLU-Pro 0.3568 / 0.1182 (0.9B) and 0.3531 / 0.1243 (0.6B), as recorded. CORE 0.3701 / 0.3397 with 500 examples per task (0.3705 / 0.3415 in training) and 0.3545 / 0.3346 on every example (0.3549 / 0.3326 recorded), within 0.002 |
+| 0.9B chat model: midtraining (240 steps) and SFT (701 steps), this repo vs the original run | first steps identical; midtraining validation bpb 0.3723 vs 0.3717 at step 150; SFT validation loss within 0.000125 at every evaluation; final MMLU identical |

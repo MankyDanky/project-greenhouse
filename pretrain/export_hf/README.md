@@ -14,6 +14,8 @@ The repo keeps nanochat's own files (`model_227158.pt`, `meta_227158.json`, `tok
 | `hf_baselines.py`, `readme_examples.py` | yardsticks for the vLLM comparison; the model card's usage snippets |
 | `upload_to_hub.py` | adds the port's files to the existing repo in one commit; it pins the released `model_227158.pt` SHA256 |
 
+The commands use the variables of `../d34_original_run/config.sh`, the run that produced the 3.3B checkpoint.
+
 ```bash
 B=$D34_ROOT/production/best_core/step_227158            # your best-CORE step; best.json names it
 cp -r $D34_BASE_DIR/tokenizer $B/                        # the converter reads <ckpt>/tokenizer/tokenizer.pkl
@@ -29,3 +31,18 @@ pip install ./vllm_plugin && python vllm_check.py --hf hf_227158 --parity parity
 Results for the released checkpoint: transformers and nanochat give bitwise-identical logits (bf16 on H200, fp32 on CPU)
 and the same CORE / MMLU / MMLU-Pro (0.458 / 0.493 / 0.178); vLLM's prompt log-probabilities differ from transformers'
 by 0.0009 on average in fp32 (0.016 in bf16, the size of bf16 batching noise).
+
+## The 0.9B and 0.6B models
+
+The same files converted
+[`castorini/gaggle-nanochat-0.9b-pretrained-climbmix-20261105`](https://huggingface.co/castorini/gaggle-nanochat-0.9b-pretrained-climbmix-20261105)
+and
+[`castorini/gaggle-nanochat-0.6b-pretrained-climbmix-20261121`](https://huggingface.co/castorini/gaggle-nanochat-0.6b-pretrained-climbmix-20261121)
+(final step 229,067 of runs trained with [`../README.md`](../README.md)). Their value embeddings are on every 4th and
+every 7th layer instead of alternate layers: the converter reads that spacing (`ve_every`) from the checkpoint's meta and
+writes it to `config.json`, where a missing value means alternate layers, so the 3.3B model's config is unchanged. It
+also refuses `model_config` fields the port does not model and checks the `<|bos|>` and `<|assistant_end|>` ids against
+the tokenizer. For the parity check of these two, pass `--nanochat-src ../nanochat`, the trainer, which reads
+`ve_every`. Both released repos ship these `configuration_gaggle.py`, `modeling_gaggle.py` and
+`convert_nanochat_to_hf.py` byte for byte. Their logits are bitwise identical to nanochat's in bf16 on GPU, and in
+fp32 at every tested length for the 0.6B model and at 5 of 8 for the 0.9B (each model card has the table).
