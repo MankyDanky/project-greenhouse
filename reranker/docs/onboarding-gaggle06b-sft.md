@@ -12,7 +12,7 @@ modal profile list
 export MODAL_PROFILE=your-modal-profile
 ```
 
-Replace `your-modal-profile` with the name shown by `profile list`. Run the commands below from the repo root. The scripts pin the training code to commit `9c878928`, the [0.6B backbone](https://huggingface.co/castorini/gaggle-nanochat-0.6b-pretrained-climbmix-20261121) to revision `c3c0d9ff`, and the [released reranker](https://huggingface.co/castorini/gaggle-reranker-0.6b-20261122) to revision `1b53dcf2` for comparison. The backbone and prepared RLHN-250K file are SHA256-checked before training.
+Replace `your-modal-profile` with the name shown by `profile list`. Run the commands below from the repo root.
 
 ## Train the reranker
 
