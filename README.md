@@ -9,6 +9,8 @@ scratch. Every stage is public:
 No third-party open-weight backbone is involved. This repository holds the code, configurations and checks behind
 each release.
 
+The project website source, release notes, and publishing instructions are in [website/](website/).
+
 ## Papers
 
 **[Project Greenhouse: Progress Toward Fully Open and Sovereign Agentic Search](https://arxiv.org/abs/2610.11922)**

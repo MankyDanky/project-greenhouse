@@ -1,0 +1,33 @@
+[
+  {
+    "id": "0.6b",
+    "name": "Gaggle 0.6B",
+    "checkpoints": {
+      "Pretrained": "gaggle-nanochat-0.6b-pretrained-climbmix-20261121",
+      "Reranker": "gaggle-reranker-0.6b-20261122"
+    }
+  },
+  {
+    "id": "0.9b",
+    "name": "Gaggle 0.9B",
+    "checkpoints": {
+      "Pretrained": "gaggle-nanochat-0.9b-pretrained-climbmix-20261105",
+      "Chat SFT": "gaggle-nanochat-0.9b-ift-climbmix-20261108",
+      "Reranker": "gaggle-reranker-0.9b-20261108"
+    }
+  },
+  {
+    "id": "3.3b",
+    "name": "Gaggle 3.3B",
+    "checkpoints": {
+      "Pretrained": "gaggle-nanochat-pretrained-climbmix-20260924",
+      "Bidirectional": "gaggle-nanochat-pretrained-climbmix-bidirectional-20260929",
+      "Chat SFT": "gaggle-nanochat-ift-climbmix-20261031",
+      "Reranker soup": "gaggle-reranker-20261005",
+      "Reranker run 1": "gaggle-reranker-run1-20260926",
+      "Reranker run 2": "gaggle-reranker-run2-20261004",
+      "Reranker run 3": "gaggle-reranker-run3-20261002",
+      "Reranker run 4": "gaggle-reranker-run4-20261005"
+    }
+  }
+]
