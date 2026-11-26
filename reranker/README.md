@@ -52,5 +52,3 @@ The numbers are mean nDCG@10 over TREC DL19–23 and the seven BEIR sets, BM25 t
 GPU, or with another backbone of the same architecture (e.g. a continued-pretraining run's dir from
 `../pretrain/continue/`), drop the pinning with `--override pack_world=<n_gpus> require_exact_budget=false`: that is a
 new run, and its plan differs.
-
-A [Modal reproduction](docs/onboarding-gaggle06b-sft.md) trains the 0.6B model on RLHN-250K and compares its final checkpoint with the released reranker on DL19.
