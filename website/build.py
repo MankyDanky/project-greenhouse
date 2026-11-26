@@ -59,7 +59,7 @@ def read_updates(models):
         if slug in slugs:
             raise ValueError(f"{source.name}: duplicate slug {slug}")
         slugs.add(slug)
-        document = markdown.Markdown(extensions=["meta", "tables"])
+        document = markdown.Markdown(extensions=["meta", "tables", "toc"])
         body = document.convert(source.read_text(encoding="utf-8"))
         metadata = document.Meta
         title = " ".join(metadata.get("title", []))

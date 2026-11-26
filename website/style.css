@@ -110,3 +110,11 @@ time { color: var(--muted); font-size: .92rem; font-variant-numeric: tabular-num
   .hero-art { aspect-ratio: 1.9; padding: 5% 22%; }
   .updates li { grid-template-columns: 1fr; }
 }
+
+.article table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; margin-bottom: 1.25rem; }
+.article th { background: #e6eee4; }
+.article th:first-child, .article td:first-child { text-align: left; }
+@media (max-width: 42rem) {
+  .article table { font-size: .875rem; }
+  .article th, .article td { padding: .35rem .25rem; }
+}
