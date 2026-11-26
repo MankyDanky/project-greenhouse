@@ -69,9 +69,9 @@ bash launch/train.sh configs/sft/run1_seed17.yaml 2 --override model_name=<run d
   output_dir=checkpoints/<name> wandb_run_name=<name>
 ```
 
-A model whose value embeddings are not on alternate layers (`ve_every` other than 2) also needs
-`nanochat_src=../pretrain/continue/third_party/nanochat`. The reranker's pinned snapshot does not know `ve_every`;
-the trainer writes it to the meta only when it is not 2.
+A model whose value embeddings are not on alternate layers (`ve_every` other than 2, such as the 0.9B and 0.6B
+models) needs nothing extra: the reranker's pinned snapshot reads `ve_every` from the checkpoint's meta, where the
+trainer writes it when it is not 2.
 
 ## Test
 

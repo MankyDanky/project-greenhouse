@@ -53,5 +53,4 @@ sample-every: -1
 save-every: 500
 keep-checkpoints: 2
 
-# The 0.6B model, once released: set init-from-dir / init-from-step, the architecture flags (and ve-every) from its
-# meta_<step>.json, its LRs (0.1 x its original peaks), weight-decay, device-batch-size and model-tag.
+# The 0.6B model: configs/train_0.6b.yaml.

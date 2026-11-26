@@ -1,8 +1,12 @@
 # Iteration 1: continued pretraining on the evaluation corpora
 
-**Status (2026-11-20):** the plan, data preparation, training, evaluation and export scripts are ready. Data
-preparation and the training pipeline pass CPU smoke tests (`tests/`). No GPU run has been made yet. The 0.6B
-Gaggle model is not released yet; its values go into `configs/train.yaml` once it is. The 3B run can start now.
+**Status (2026-11-24):** the plan, data preparation, training, evaluation and export scripts are ready, and data
+preparation and the training pipeline pass CPU smoke tests (`tests/`).
+
+- **3B:** the CPT run is done and its checkpoint is available. The reranker fine-tuning on it (section 6) is running.
+- **0.6B:** the CPT run can start now: `configs/train_0.6b.yaml`, from the released
+  [`castorini/gaggle-nanochat-0.6b-pretrained-climbmix-20261121`](https://huggingface.co/castorini/gaggle-nanochat-0.6b-pretrained-climbmix-20261121), with
+  [`castorini/gaggle-reranker-0.6b-20261122`](https://huggingface.co/castorini/gaggle-reranker-0.6b-20261122) as its reranker baseline.
 
 **Question.** If a Gaggle base model keeps pre-training on the raw documents of the collections the reranker is
 evaluated on, does the same reranker fine-tuning then score higher?
@@ -22,9 +26,9 @@ mix, so their results are not corpus-aware.
 | 1 | When to mix the corpus in | **After pre-training (CPT)**, from the released Gaggle base models: they are the only checkpoints available. Within the run, corpus and replay are interleaved from start to end. | 2 |
 | 2 | What to mix in | **Raw document text** of all the evaluation corpora (all seven BEIR collections, Robust04 and TREC-News included; MS MARCO v1 and v2), **balanced** between BEIR, MS MARCO v1 and MS MARCO v2 (1 : 1 : 1). No queries, no judgements, no prompt/answer format. | 3 |
 | 3 | Replay | **25% of training tokens**: pre-training data (ClimbMix), interleaved at a constant ratio, added on top of the corpus. | 4 |
-| 4 | Models | **Gaggle 3B** (`castorini/gaggle-nanochat-pretrained-climbmix-20260924`) and **Gaggle 0.6B** (to be released). | 6 |
+| 4 | Models | **Gaggle 3B** (`castorini/gaggle-nanochat-pretrained-climbmix-20260924`) and **Gaggle 0.6B** (`castorini/gaggle-nanochat-0.6b-pretrained-climbmix-20261121`). | 6 |
 | 5 | Learning rate | Peak **0.1 × the original run's peak**, 1% warmup, linear decay to 0 over the second half. | 5 |
-| 6 | Reranker stage | Unchanged: the paper's run-1 recipe for the 3B model; the same recipe with a memory-sized micro-batch for the 0.6B model. Only the starting weights change. | 6 |
+| 6 | Reranker stage | Unchanged: the paper's run-1 recipe for the 3B model; for the 0.6B model, the recipe of its released reranker (run 1's, with a pinned 120,000-token budget on one H200). Only the starting weights change. | 6 |
 
 Everything above is a default in one of two files: the mix in `configs/data.yaml`, the training run in
 `configs/train.yaml`. Any key can be changed in the file or on the command line (`--set KEY=VALUE`).
@@ -120,8 +124,8 @@ None of these works uses Muon, which trains the Gaggle models' matrix weights.
   end because the reranker needs general knowledge (BEIR rewards it), so forgetting costs the final metric, not just
   a language-modelling benchmark.
 - **Ours is true replay.** The replay comes from ClimbMix shards the 3B model was trained on (shards 0–5899; its
-  data loaders were past shard 5,949 at release). For the 0.6B model, check `dataloader_state_dict` in its
-  `meta_<step>.json` on release: replay should come from shards it was trained on.
+  data loaders were past shard 5,949 at release). The 0.6B model's loaders were at shard 6,029 at release
+  (`dataloader_state_dict` in its `meta_229067.json`), so the same replay shards are seen data for both models.
 - **The cost is modest.** 25% replay means a third more tokens than none.
 - **Constant ratio, interleaved document by document, fixed when the data is built.** Every stretch of the run sees
   the same share, so a run stopped early or preempted is still the same experiment. The trainer only reads shards in
@@ -137,7 +141,7 @@ None of these works uses Muon, which trains the Gaggle models' matrix weights.
 | Peak LR | 0.1 × the original run's peak, for all four parameter groups (Muon matrices, embeddings, unembedding, scalars) | The 3B model ended at about 0.07 × peak, so this is a mild re-warm: enough to adapt, little to forget (Ibrahim et al.; Gupta et al.). |
 | Schedule | 1% linear warmup, constant, linear decay to 0 over the second half | Pre-training decayed over its last 55%. Decaying to 0 gives a finished model, as in the replay papers. |
 | Batch | 2^20 tokens per step (2,048-token sequences) | About 4,000 steps on the default mix. Pre-training ended at 2^21. |
-| Weight decay | the original run's Muon amplitude, as is (3B 0.021764; the 0.6B value is filled in on release); cosine to 0 over the run | nanochat would otherwise rescale it for the short horizon (by tens of times). |
+| Weight decay | the original run's Muon amplitude, as is (3B 0.021764; 0.6B 0.112984, its 1M-batch value, held at 2M); cosine to 0 over the run | nanochat would otherwise rescale it for the short horizon (by tens of times). |
 | Length | one pass: 95% of the mix's tokens | nanochat's loader would wrap into a second pass, and its packing crops a few percent of tokens. |
 | Precision | FP8 matmuls, as in pre-training (`fp8: false` on GPUs older than H100) | |
 | Optimizer state | fresh | The released checkpoints carry no optimizer state. |
@@ -150,20 +154,22 @@ original run's peaks × 0.1), and nanochat's own batch-size and horizon rescalin
 
 ## 6. The run
 
-For each model (3B now, 0.6B once released), with the repository's shared tools (README.md has the commands):
+For each model (3B and 0.6B), with the repository's shared tools (README.md has the commands):
 1. `prepare_data.py configs/data.yaml`: the mix (once, shared by both models).
-2. The continued-pretraining trainer of `pretrain/continue/` with `configs/train.yaml`: CPT.
+2. The continued-pretraining trainer of `pretrain/continue/` with `configs/train.yaml` (3B) or
+   `configs/train_0.6b.yaml` (0.6B): CPT.
 3. `scripts/base_eval.py --checkpoint-dir` (bpb on the held-out, seen and replay sets; CORE): the language model
    before and after.
 4. The paper's reranker fine-tuning and evaluation, with the run's checkpoint directory as the backbone.
 
 **Baselines.** For the 3B model, the paper's run 1 (`castorini/gaggle-reranker-run1-20260926`; DL 0.641, BEIR
-0.544). For the 0.6B model, the reranker on the untouched model has to be trained once
-(`configs/rerank/gaggle06b_lce.yaml` with the released model).
+0.544). For the 0.6B model, its released reranker (`castorini/gaggle-reranker-0.6b-20261122`; DL 0.634, BEIR 0.533),
+trained with `reranker/configs/experiments/gaggle06b_lce.yaml`, whose pinned budget and packing the CPT reranker
+reuses, so both see the same batches.
 
 **Cost (extrapolated from pre-training throughput).** The default mix is about 4.4B tokens, about 1.5% of a
-pre-training run: about 25 H100-hours for the 3B model (pre-training took ~1,600 for 287B tokens), less for the 0.6B
-model.
+pre-training run: about 25 H100-hours for the 3B model (pre-training took ~1,600 for 287B tokens), and about 7 for
+the 0.6B model (~1.4M tokens/s on 8 H100s in pre-training, about 450 H100-hours for 287B tokens).
 
 **Rules:**
 - Pick no checkpoint by test-set score. The reranker uses its final checkpoint, and the CPT run is used at its final

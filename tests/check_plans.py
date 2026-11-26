@@ -26,6 +26,9 @@ EXPECTED = {
     "configs/attention/mntp_standard.yaml": (1931, None), "configs/attention/mntp_mask.yaml": (1928, None),
     "configs/attention/mntp_meanpool.yaml": (1930, None),
     "configs/curation/self_filter.yaml": (1918, None), "configs/curation/self_filter_self_kd.yaml": (1918, None),
+    # the released 0.6B reranker (one H200): 1,928 steps as in its log, which also matches this plan's microbatch count
+    # and groups per step (mean, min, max)
+    "configs/experiments/gaggle06b_lce.yaml": (1928, "858fd1cd772a3f29903b72342fcf7335f93def8119aab41f231755a90de1e136"),
 }
 
 
