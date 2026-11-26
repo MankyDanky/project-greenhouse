@@ -18,6 +18,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import urllib.request
 from pathlib import Path
 
 import modal
@@ -27,8 +28,11 @@ BASE_SHA256 = "4e45e1458d00d8d2b869091404ee9c75966431425b972af3364bcd5a5da3ae9d"
 RUN_NAME = "gaggle06b_lce_rlhn250k_20261125"
 PUBLISHED_REPO = "castorini/gaggle-reranker-0.6b-20261122"
 PUBLISHED_REVISION = "1b53dcf2042288af4b0716808f8e3d80341cb597"
-DATASETS = ("dl19",)
-QRELS = {"dl19": "qrels.dl19-passage.txt"}
+CANDIDATES_REPO = "castorini/rank_llm_data"
+CANDIDATES_REVISION = "39db0a25a552dd2a12012df22029686bf7fdc050"
+QRELS_REVISION = "5a26fd8d1a9e8408ae9a2606e95852312f1e0062"
+DATASETS = ("dl19", "dl20", "dl21", "dl22", "dl23")
+QRELS = {dataset: f"qrels.{dataset}-passage.txt" for dataset in DATASETS}
 
 image = (
     modal.Image.from_registry("ubuntu:24.04", add_python="3.12")
@@ -107,15 +111,33 @@ def verified_inputs() -> dict:
     return receipt
 
 
-@app.function(cpu=8, memory=32768, timeout=3600,
+@app.function(cpu=2, memory=8192, timeout=1800,
               volumes={"/cache": cache, "/results": outputs})
 def prepare() -> dict:
+    from huggingface_hub import hf_hub_download
+
     candidates.mkdir(parents=True, exist_ok=True)
-    (Path.home() / ".cache/pyserini/topics-and-qrels").mkdir(parents=True, exist_ok=True)
     sys.path.insert(0, str(repo / "eval/candidates"))
     from digest import digest
     expected = dict(reversed(line.split()) for line in
                     (repo / "eval/candidates/DIGESTS").read_text().splitlines())
+    expected_qrels = dict(reversed(line.split()) for line in
+                          (repo / "eval/qrels.sha256").read_text().splitlines())
+    qrels_dir = Path("/cache/pyserini/qrels")
+    qrels_dir.mkdir(parents=True, exist_ok=True)
+    missing_qrels = [QRELS[dataset] for dataset in DATASETS
+                     if not (qrels_dir / QRELS[dataset]).is_file()
+                     or sha256(qrels_dir / QRELS[dataset]) != expected_qrels[QRELS[dataset]]]
+    if missing_qrels:
+        with tempfile.TemporaryDirectory(dir=qrels_dir) as temp:
+            for filename in missing_qrels:
+                staged = Path(temp) / filename
+                url = f"https://raw.githubusercontent.com/castorini/eval/{QRELS_REVISION}/qrels/{filename}"
+                urllib.request.urlretrieve(url, staged)
+                if sha256(staged) != expected_qrels[filename]:
+                    raise RuntimeError(f"{filename} SHA256 differs from the published qrels")
+                os.replace(staged, qrels_dir / filename)
+        cache.commit()
     for dataset in DATASETS:
         path = candidates / f"retrieve_results_{dataset}_top100.jsonl"
         try:
@@ -124,13 +146,27 @@ def prepare() -> dict:
             valid = False
         if valid:
             continue
+        source = Path(hf_hub_download(CANDIDATES_REPO,
+                                      f"retrieve_results/BM25/{path.name}",
+                                      repo_type="dataset", revision=CANDIDATES_REVISION))
         with tempfile.TemporaryDirectory(dir=comparison) as temp:
             staged = Path(temp) / path.name
-            subprocess.run([sys.executable, "eval/candidates/build_first_stage.py",
-                            "--dataset", dataset, "--out", temp], cwd=repo, check=True)
+            if dataset == "dl23":
+                # The cache calls this field passage; the evaluator reads contents.
+                with source.open() as incoming, staged.open("w") as outgoing:
+                    for line in incoming:
+                        row = json.loads(line)
+                        for candidate in row["candidates"]:
+                            candidate["doc"] = {"id": candidate["docid"],
+                                                "contents": " ".join(candidate["doc"]["passage"].split())}
+                        outgoing.write(json.dumps(row) + "\n")
+            else:
+                shutil.copy2(source, staged)
             if digest(staged)[0] != expected[dataset]:
                 raise RuntimeError(f"{dataset} candidate digest differs from the published input")
             os.replace(staged, path)
+            outputs.commit()
+            cache.commit()
     receipt = verified_inputs()
     outputs.commit()
     cache.commit()

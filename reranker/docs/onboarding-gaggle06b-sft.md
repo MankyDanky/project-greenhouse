@@ -29,7 +29,7 @@ The last command submits a detached job. It runs `configs/experiments/gaggle06b_
 
 ## Compare the rerankers
 
-Build the repo's BM25 top-100 candidates, check their published digest and the DL19 qrels hash, then score the same 43 queries with both models:
+Fetch the BM25 top-100 candidates, check their digests and qrels hashes against the repo, then score all five TREC DL sets with both models:
 
 ```bash
 modal run reranker/modal_gaggle06b_compare.py --stage prepare
@@ -51,12 +51,17 @@ On the [model card's anemia example](https://huggingface.co/castorini/gaggle-rer
 | Dietary iron | 7.888 | 9.614 |
 | Iron as a metal | 6.110 | 8.017 |
 
-The DL19 scores also agree closely:
+The TREC DL scores are:
 
 | Collection | Queries | Published nDCG@10 | Reproduced nDCG@10 | Same top result |
 |---|---:|---:|---:|---:|
-| DL19 | 43 | 0.7602 | 0.7581 | 42/43 |
+| DL19 | 43 | 0.7601 | 0.7581 | 41/43 |
+| DL20 | 54 | 0.7065 | 0.7083 | 49/54 |
+| DL21 | 53 | 0.7059 | 0.7020 | 44/53 |
+| DL22 | 76 | 0.5233 | 0.5232 | 70/76 |
+| DL23 | 82 | 0.4706 | 0.4688 | 75/82 |
+| Five-set mean | | 0.6333 | 0.6321 | 279/308 |
 
-Mean top-10 overlap was 0.9628 and mean Spearman rank correlation was 0.9964. The raw scores and full rankings do not match exactly. This checks DL19, not the published five-set TREC DL or seven-set BEIR means.
+The mean is unweighted across the five sets. The 0.0012 gap is within the paper's four-run DL mean standard deviation of 0.0014, measured with the larger 3.3B backbone. The raw scores and full rankings do not match exactly. BEIR was not evaluated.
 
 + Results reproduced by [@MankyDanky](https://github.com/MankyDanky) on 2026-11-26 using a Modal H200.
