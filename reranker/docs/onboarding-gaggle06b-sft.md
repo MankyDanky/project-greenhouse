@@ -59,4 +59,4 @@ The DL19 scores also agree closely:
 
 Mean top-10 overlap was 0.9628 and mean Spearman rank correlation was 0.9964. The raw scores and full rankings do not match exactly. This checks DL19, not the published five-set TREC DL or seven-set BEIR means.
 
-+ Results reproduced by [@MankyDanky](https://github.com/MankyDanky) on 2026-11-26 using a Modal H200. The training job resumed from its step-600 checkpoint after an interruption and finished at step 1,928. Modal reported $54.94 across all listed apps in the personal workspace on November 25–26, below the $100 budget.
++ Results reproduced by [@MankyDanky](https://github.com/MankyDanky) on 2026-11-26 using a Modal H200.
