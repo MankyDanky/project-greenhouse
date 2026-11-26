@@ -2,13 +2,14 @@
 
 Run from this repository checkout with the personal ``mankydanky`` profile:
 
-    modal run --profile mankydanky reranker/modal_gaggle06b_sft.py --stage preflight
-    modal run --detach --profile mankydanky reranker/modal_gaggle06b_sft.py --stage train
+    modal run --profile mankydanky reranker/modal_gaggle06b_sft.py --stage preflight  # first attempt only
+    modal deploy --profile mankydanky reranker/modal_gaggle06b_sft.py
+    MODAL_PROFILE=mankydanky python -c 'import modal; c = modal.Function.from_name("greenhouse-gaggle06b-rlhn-sft", "train").spawn(); print(c.object_id)'
 
 Inputs were staged by the bounded probe in ``greenhouse-sft-bounded-probe``.
 Training output goes to a separate Volume. No automatic retries are configured.
-The 15-hour process limit plus the 16-hour Modal timeout cap one attempt well
-below $100 at the verified H200 + CPU + RAM rate of $5.1744/hour.
+The 13-hour process limit plus the 14-hour Modal timeout cap a resumed attempt
+below the remaining $100 budget at the verified $5.1744/hour resource rate.
 """
 
 import hashlib
@@ -28,7 +29,7 @@ BASE_REVISION = "c3c0d9ff865bcaf23b268b6d88b3aa3d05ef9768"
 BASE_SHA256 = "4e45e1458d00d8d2b869091404ee9c75966431425b972af3364bcd5a5da3ae9d"
 DATA_SHA256 = "c3743e83920a54d260483573d9d3176e165dcc3a34e398413ecc49f75b9c06d0"
 EXPECTED_STEPS = 1928
-MAX_PROCESS_SECONDS = 15 * 3600
+MAX_PROCESS_SECONDS = 13 * 3600
 RUN_NAME = "gaggle06b_lce_rlhn250k_20261125"
 
 image = (
@@ -101,12 +102,15 @@ def preflight() -> dict:
     return receipt
 
 
-@app.function(gpu="H200", cpu=8, memory=32768, timeout=16 * 3600,
+@app.function(gpu="H200", cpu=8, memory=32768, timeout=14 * 3600,
               volumes={"/probe": inputs, "/results": outputs},
               single_use_containers=True)
 def train() -> dict:
     receipt = check_inputs()
-    if json.loads((run_dir / "preflight.json").read_text()) != receipt:
+    saved_receipt = json.loads((run_dir / "preflight.json").read_text())
+    # Keep the verified inputs pinned while allowing a tighter cap on a resume.
+    stable_keys = receipt.keys() - {"max_process_seconds"}
+    if any(saved_receipt.get(key) != receipt[key] for key in stable_keys):
         raise RuntimeError("Missing or changed preflight receipt")
     command = [
         "bash", "launch/train.sh", "configs/experiments/gaggle06b_lce.yaml", "1",
@@ -143,7 +147,7 @@ def train() -> dict:
     finally:
         watchdog.cancel()
     if expired.is_set():
-        raise RuntimeError("15-hour attempt budget exhausted; inspect checkpoints and billing before resuming")
+        raise RuntimeError("13-hour attempt budget exhausted; inspect checkpoints and billing before resuming")
     if code != 0 or not (saw_budget and saw_plan):
         raise RuntimeError(f"Trainer ended with code {code}; budget seen={saw_budget}, plan seen={saw_plan}")
     import torch
@@ -168,6 +172,7 @@ def main(stage: str = "preflight") -> None:
     if stage == "preflight":
         print(json.dumps(preflight.remote(), indent=2))
     elif stage == "train":
-        print(json.dumps(train.remote(), indent=2))
+        call = train.spawn()
+        print(json.dumps({"call_id": call.object_id}, indent=2))
     else:
         raise ValueError("stage must be preflight or train")
