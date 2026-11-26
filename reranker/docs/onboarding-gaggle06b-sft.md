@@ -60,7 +60,7 @@ The TREC DL scores are:
 | DL21 | 53 | 0.7059 | 0.7020 | 44/53 |
 | DL22 | 76 | 0.5233 | 0.5232 | 70/76 |
 | DL23 | 82 | 0.4706 | 0.4688 | 75/82 |
-| Five-set mean | | 0.6333 | 0.6321 | 279/308 |
+| TREC DL mean | | 0.6333 | 0.6321 | 279/308 |
 
 The mean is unweighted across the five sets. The 0.0012 gap is within the paper's four-run DL mean standard deviation of 0.0014, measured with the larger 3.3B backbone. The raw scores and full rankings do not match exactly. BEIR was not evaluated.
 
