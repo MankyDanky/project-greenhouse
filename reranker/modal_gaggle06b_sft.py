@@ -1,13 +1,15 @@
 """Reproduce the released 0.6B Gaggle RLHN-250K SFT on one Modal H200.
 
-Run from this repository checkout with the personal ``mankydanky`` profile:
+Run from this repository checkout with a Modal profile:
 
-    modal run --profile mankydanky reranker/modal_gaggle06b_sft.py --stage preflight  # first attempt only
-    modal deploy --profile mankydanky reranker/modal_gaggle06b_sft.py
-    MODAL_PROFILE=mankydanky python -c 'import modal; c = modal.Function.from_name("greenhouse-gaggle06b-rlhn-sft", "train").spawn(); print(c.object_id)'
+    modal run reranker/modal_gaggle06b_sft.py --stage stage
+    modal run reranker/modal_gaggle06b_sft.py --stage preflight  # first attempt only
+    modal deploy reranker/modal_gaggle06b_sft.py
+    python -c 'import modal; c = modal.Function.from_name("greenhouse-gaggle06b-rlhn-sft", "train").spawn(); print(c.object_id)'
 
-Inputs were staged by the bounded probe in ``greenhouse-sft-bounded-probe``.
-Training output goes to a separate Volume. No automatic retries are configured.
+The staging function checks the released backbone and prepared RLHN-250K data
+before training. Training output goes to a separate Volume. No automatic retries
+are configured.
 The 13-hour process limit plus the 14-hour Modal timeout cap a resumed attempt
 below the remaining $100 budget at the verified $5.1744/hour resource rate.
 """
@@ -36,8 +38,10 @@ image = (
     modal.Image.debian_slim(python_version="3.12")
     .apt_install("git")
     .run_commands(
-        "git clone --depth 1 https://github.com/castorini/project-greenhouse.git /opt/project-greenhouse",
-        f"test $(git -C /opt/project-greenhouse rev-parse HEAD) = {REPO_COMMIT}",
+        "git init /opt/project-greenhouse",
+        "git -C /opt/project-greenhouse remote add origin https://github.com/castorini/project-greenhouse.git",
+        f"git -C /opt/project-greenhouse fetch --depth 1 origin {REPO_COMMIT}",
+        "git -C /opt/project-greenhouse checkout --detach FETCH_HEAD",
         "python -m pip install torch==2.14.0 --index-url https://download.pytorch.org/whl/cu130",
         "python -m pip install -r /opt/project-greenhouse/reranker/requirements.txt",
         "bash /opt/project-greenhouse/pretrain/continue/setup.sh",
@@ -45,7 +49,7 @@ image = (
     .env({"HF_HOME": "/probe/hf", "WANDB_MODE": "offline"})
 )
 app = modal.App("greenhouse-gaggle06b-rlhn-sft", image=image)
-inputs = modal.Volume.from_name("greenhouse-sft-bounded-probe")
+inputs = modal.Volume.from_name("greenhouse-sft-bounded-probe", create_if_missing=True)
 outputs = modal.Volume.from_name("greenhouse-gaggle06b-sft", create_if_missing=True)
 
 reranker_dir = Path("/opt/project-greenhouse/reranker")
@@ -63,13 +67,17 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def check_inputs() -> dict:
+def link_inputs() -> None:
     model_dir.parent.mkdir(parents=True, exist_ok=True)
     if not model_dir.exists():
         model_dir.symlink_to(model_source, target_is_directory=True)
     data_link = reranker_dir / "data"
     if not data_link.exists():
         data_link.symlink_to("/probe/data", target_is_directory=True)
+
+
+def check_inputs() -> dict:
+    link_inputs()
     if sha256(model_dir / "model_229067.pt") != BASE_SHA256:
         raise RuntimeError("Released 0.6B backbone SHA256 mismatch")
     if sha256(data_file) != DATA_SHA256:
@@ -87,6 +95,32 @@ def check_inputs() -> dict:
             "base_sha256": BASE_SHA256, "data_sha256": DATA_SHA256,
             "data_rows": rows, "expected_steps": EXPECTED_STEPS,
             "gpu": "H200", "max_process_seconds": MAX_PROCESS_SECONDS}
+
+
+@app.function(cpu=16, memory=32768, timeout=2 * 3600, volumes={"/probe": inputs})
+def stage_inputs() -> dict:
+    from huggingface_hub import hf_hub_download
+
+    link_inputs()
+    model_source.mkdir(parents=True, exist_ok=True)
+    for filename in ("model_229067.pt", "meta_229067.json", "tokenizer.json", "tokenizer_config.json"):
+        hf_hub_download("castorini/gaggle-nanochat-0.6b-pretrained-climbmix-20261121",
+                        filename, revision=BASE_REVISION, local_dir=model_source)
+    base = reranker_dir / "data/rlhn250k_prepared/train.parquet"
+    if not base.exists():
+        subprocess.run(["python", "data_prep/prepare_rlhn.py", "--dataset", "rlhn/rlhn-250K",
+                        "--out", "data/rlhn250k_prepared", "--num-proc", "16"],
+                       cwd=reranker_dir, check=True)
+    if not data_file.exists():
+        subprocess.run(["python", "data_prep/relength_nanochat.py",
+                        "--src", "data/rlhn250k_prepared/train.parquet",
+                        "--out", "data/rlhn250k_prepared_climbmix_lens",
+                        "--tokenizer", str(model_dir), "--procs", "16"],
+                       cwd=reranker_dir, check=True)
+    receipt = check_inputs()
+    inputs.commit()
+    print("STAGE_OK", json.dumps(receipt), flush=True)
+    return receipt
 
 
 @app.function(cpu=4, memory=16384, timeout=600,
@@ -169,10 +203,12 @@ def train() -> dict:
 
 @app.local_entrypoint()
 def main(stage: str = "preflight") -> None:
-    if stage == "preflight":
+    if stage == "stage":
+        print(json.dumps(stage_inputs.remote(), indent=2))
+    elif stage == "preflight":
         print(json.dumps(preflight.remote(), indent=2))
     elif stage == "train":
         call = train.spawn()
         print(json.dumps({"call_id": call.object_id}, indent=2))
     else:
-        raise ValueError("stage must be preflight or train")
+        raise ValueError("stage must be stage, preflight or train")
