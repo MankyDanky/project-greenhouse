@@ -24,7 +24,7 @@ Model: 0.9b
 Explain what was released, how it was trained, and what the evaluation showed.
 ```
 
-`Model` is optional and must match an ID in `models.json`. It adds checkpoint links to the post and links the post from that model family in the zoo. Update the catalog when publishing new checkpoints. For updates developed in the private repo, copy over the text and links cleared for public release.
+`Model` is optional and must match an ID in `models.json`. It adds checkpoint links to the post and links the post from that model family in the zoo. Update the catalog when publishing new checkpoints. Link each newly released checkpoint directly to its Hugging Face model card when you introduce it in the post. For updates developed in the private repo, copy over the text and links cleared for public release.
 
 ## Deploy to project-greenhouse.ai
 
