@@ -30,7 +30,7 @@ clip: 12.0
 seed: 17
 
 # Execution chunks retain the joint loss and its gradient if native token lengths exceed memory.
-exec_chunk_tokens: 90000
+exec_chunk_tokens: 120000
 exec_mode: gradcache
 
 num_workers: 6
