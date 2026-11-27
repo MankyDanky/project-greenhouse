@@ -2,7 +2,7 @@
 computed from the backbone's own LM-head rows for those two tokens, in fp32, with no softcap.
 
   nanochat  greenhouse UpstreamNanochatReranker, unmodified (run G's wrapper; untied rows cloned to fp32)
-  qwen      Qwen3_5ForConditionalGeneration -> text decoder; tied rows read from the input embedding
+  qwen      Qwen3ForCausalLM or Qwen3_5ForConditionalGeneration -> text decoder; tied rows read from the input embedding
   gemma     Gemma4ForConditionalGeneration  -> text decoder; tied rows read from the input embedding
   minicpm   LlamaForCausalLM                -> decoder; untied rows cloned to an fp32 parameter
   marin     LlamaForCausalLM (Marin 8B)     -> decoder; untied rows cloned to an fp32 parameter
@@ -47,7 +47,12 @@ class HFReranker(nn.Module):
         config = AutoConfig.from_pretrained(model_dir, trust_remote_code=remote)
         mt = config.model_type
         if backbone == "qwen":
-            from transformers import Qwen3_5ForConditionalGeneration as Cls
+            if mt == "qwen3":
+                from transformers import Qwen3ForCausalLM as Cls
+            elif mt == "qwen3_5":
+                from transformers import Qwen3_5ForConditionalGeneration as Cls
+            else:
+                raise ValueError(f"unsupported Qwen model type: {mt}")
         elif backbone == "gemma":
             from transformers import Gemma4ForConditionalGeneration as Cls
         elif backbone in ("minicpm", "marin"):

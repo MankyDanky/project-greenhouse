@@ -1,0 +1,40 @@
+# Qwen3-0.6B-Base on the released Gaggle 0.6B reranker's RLHN-250K SFT recipe.
+# Engine: multi. Train: bash launch/train.sh configs/experiments/qwen3_06b_lce.yaml 1
+# Control: configs/experiments/gaggle06b_lce.yaml, 1,928 steps, plan SHA256 below.
+# The pretrained checkpoint, its native tokenizer, and the model adapter are the backbone-dependent changes.
+backbone: qwen
+model_name: models/qwen3-0.6b-base
+train_parquet: data/rlhn250k_prepared_climbmix_lens/train.parquet
+output_dir: checkpoints/qwen3_06b_lce
+
+length_rule: caps
+max_query_len: 128
+max_doc_len: 512
+packing_scaffold: 14
+max_tokens_per_batch: 120000
+pack_world: 1
+max_groups: 32
+global_batch_groups: 128
+k_choices: [7, 15, 23]
+expected_plan_sha256: 858fd1cd772a3f29903b72342fcf7335f93def8119aab41f231755a90de1e136
+
+precision: tf32
+grad_checkpointing: true
+attn_implementation: sdpa
+tau: 1.0
+epochs: 1
+lr: 5.0e-5
+weight_decay: 0.01
+warmup_steps: 150
+clip: 12.0
+seed: 17
+
+# Execution chunks retain the joint loss and its gradient if native token lengths exceed memory.
+exec_chunk_tokens: 32000
+exec_mode: gradcache
+
+num_workers: 6
+resume: auto
+save_every: 200
+keep_resume: 2
+log_every: 20
